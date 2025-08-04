@@ -17,7 +17,13 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlotsExt = "Plots"
 
 [compat]
+julia = "1.9"
+FilterHelpers = "0.2.0"
+ForwardDiff = "0.10.38"
 ModelingToolkit = "9"
+SciMLBase = "2.107.0"
+LinearAlgebra = "1.9.0"
+
 
 [extras]
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
