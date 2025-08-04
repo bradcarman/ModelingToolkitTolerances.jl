@@ -37,5 +37,7 @@ resids = analysis(prob, Tsit5());
 @test maximum(resids[9].residuals[:,1]) < 1e-3
 
 
-@test_nowarn plot(res)
-@test_nowarn plot(resids)
+p = plot(res)
+@test p isa Plots.Plot
+p = plot(resids)
+@test p isa Plots.Plot
