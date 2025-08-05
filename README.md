@@ -279,6 +279,9 @@ plot(sol; idxs=T)
 
 As can be seen, we now have a stable solution, as expected.
 
+# Important Note
+Using `saveat` can affect the quality of the `ForwardDiff.derivative` computed from the `ODESolution`.  Avoid setting this keyword when using `residual()` or `analysis()`.  
+
 # API
 
 ```
