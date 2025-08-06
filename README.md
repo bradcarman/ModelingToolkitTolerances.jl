@@ -64,11 +64,30 @@ plot(resid)
 As can be seen, the error or residual of the model is quite larger than 0.  A perfect solution (i.e. an analytical solution) to the problem would give a residual of 0.  We can see then that this solution, as expected, is not high quality.  So what should we do to get a better solution?  Let's use ModelingToolkitTolerances.jl to explore what we can do using the `analysis` function...
 
 ```julia
-resids = analysis(prob, Rodas5P());
+resids = analysis(prob, Rodas5P())
+```
+
+```
+Summary of Max Residuals
+┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
+│ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
+├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
+│  0.001 │           12.2 │            1.96 │           0.774 │             0.78 │
+│ 1.0e-6 │           12.2 │            2.14 │           0.049 │   *** 0.0112 *** │
+│ 1.0e-9 │            N/A │             N/A │             N/A │              N/A │
+└────────┴────────────────┴─────────────────┴─────────────────┴──────────────────┘
+```
+
+
+
+
+
+In plotted form...
+```julia
 plot(resids)
 ```
 
-![](figures/README_3_1.png)
+![](figures/README_4_1.png)
 
 
 
@@ -81,7 +100,7 @@ Plots.plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
 Plots.scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
 ```
 
-![](figures/README_4_1.png)
+![](figures/README_5_1.png)
 
 
 
@@ -95,7 +114,7 @@ using ModelingToolkitTolerances: work_precision
 work_precision(resids)
 ```
 
-![](figures/README_5_1.png)
+![](figures/README_6_1.png)
 
 
 
@@ -116,7 +135,7 @@ Plots.plot(sol; idxs=sys.vol₊port₊p)
 Plots.scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
 ```
 
-![](figures/README_6_1.png)
+![](figures/README_7_1.png)
 
 
 
@@ -127,7 +146,7 @@ resid = residual(sol, 0:0.01:1)
 plot(resid)
 ```
 
-![](figures/README_7_1.png)
+![](figures/README_8_1.png)
 
 
 
@@ -141,7 +160,7 @@ p2 = plot(resid, DIFFERENTIAL)
 plot(p1,p2)
 ```
 
-![](figures/README_8_1.png)
+![](figures/README_9_1.png)
 
 
 
@@ -153,7 +172,7 @@ using ModelingToolkitTolerances: ResidualSettings
 plot(resid, ResidualSettings(9))
 ```
 
-![](figures/README_9_1.png)
+![](figures/README_10_1.png)
 
 
 
@@ -205,7 +224,7 @@ sol = solve(prob, Tsit5())
 plot(sol; idxs=T)
 ```
 
-![](figures/README_11_1.png)
+![](figures/README_12_1.png)
 
 
 
@@ -238,7 +257,7 @@ times = 0:0.1:10
 plot(times, resf; label="manual")
 ```
 
-![](figures/README_14_1.png)
+![](figures/README_15_1.png)
 
 
 
@@ -249,20 +268,36 @@ res = residual(sol, times)
 plot!(res.t, res.residuals[:,1]; label="ModelingToolkitTolerances")
 ```
 
-![](figures/README_15_1.png)
+![](figures/README_16_1.png)
 
 
 
 Note: calling `plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY)` will plot the `norm` of all requested equations in `settings`.
 
-Using the `analysis` function we can quickly find a better tolerance setting.
+Using the `analysis` function we can quickly find a better tolerance setting...
 
 ```julia
-resids = analysis(prob, Tsit5());
+resids = analysis(prob, Tsit5())
+```
+
+```
+Summary of Max Residuals
+┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
+│ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
+├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
+│  0.001 │           2.68 │          0.0105 │         0.00779 │          0.00779 │
+│ 1.0e-6 │           2.67 │         0.00241 │         1.01e-5 │          7.69e-6 │
+│ 1.0e-9 │           2.67 │          0.0024 │         2.37e-6 │  *** 2.51e-8 *** │
+└────────┴────────────────┴─────────────────┴─────────────────┴──────────────────┘
+```
+
+
+
+```julia
 plot(resids)
 ```
 
-![](figures/README_16_1.png)
+![](figures/README_18_1.png)
 
 
 
@@ -273,7 +308,7 @@ sol = solve(prob, Tsit5(); reltol=1e-6)
 plot(sol; idxs=T)
 ```
 
-![](figures/README_17_1.png)
+![](figures/README_19_1.png)
 
 
 

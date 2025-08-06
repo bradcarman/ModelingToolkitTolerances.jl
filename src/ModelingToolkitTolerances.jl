@@ -151,7 +151,7 @@ function no_simplify(sys::ODESystem)
 end
 
 
-function show_summary(io::IO, infos::Vector{ResidualInfo})
+function show_summary(io, infos::Vector{ResidualInfo}; kwargs...)
     
     header = ["abstol"]
     for reltol in reltols
@@ -182,7 +182,7 @@ function show_summary(io::IO, infos::Vector{ResidualInfo})
         push!(cols, col)
     end
 
-    pretty_table(io, hcat(abstols, cols...); header, title="Summary of Max Residuals")
+    pretty_table(io, hcat(abstols, cols...); header, title="Summary of Max Residuals", crop=:none, kwargs...)
 end
 
 

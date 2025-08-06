@@ -55,8 +55,12 @@ plot(resid)
 
 As can be seen, the error or residual of the model is quite larger than 0.  A perfect solution (i.e. an analytical solution) to the problem would give a residual of 0.  We can see then that this solution, as expected, is not high quality.  So what should we do to get a better solution?  Let's use ModelingToolkitTolerances.jl to explore what we can do using the `analysis` function...
 
+```julia, line_width=120
+resids = analysis(prob, Rodas5P())
+```
+
+In plotted form...
 ```julia
-resids = analysis(prob, Rodas5P());
 plot(resids)
 ```
 
@@ -183,10 +187,13 @@ plot!(res.t, res.residuals[:,1]; label="ModelingToolkitTolerances")
 
 Note: calling `plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY)` will plot the `norm` of all requested equations in `settings`.
 
-Using the `analysis` function we can quickly find a better tolerance setting.
+Using the `analysis` function we can quickly find a better tolerance setting...
+
+```julia; line_width=120
+resids = analysis(prob, Tsit5())
+```
 
 ```julia
-resids = analysis(prob, Tsit5());
 plot(resids)
 ```
 
