@@ -122,7 +122,6 @@ function analysis(prob::ODEProblem, solver, tms = collect(prob.tspan[1]:1e-3:pro
     end
 
     return residuals
-
 end
 
 function work_precision end
@@ -152,33 +151,42 @@ function no_simplify(sys::ODESystem)
 end
 
 
-function show_summary(infos::Vector{ResidualInfo})
-        header = ["abstol"]
+function show_summary(io::IO, infos::Vector{ResidualInfo})
+    
+    header = ["abstol"]
     for reltol in reltols
         push!(header, "reltol = $reltol")
     end
     
-    
-    
-    cols = Vector{Float64}[]
+    residuals = map(LinearAlgebra.norm, infos)
+    max_residuals = map(maximum, residuals)
+    best = minimum(max_residuals)
+
+    cols = Vector{String}[]
     for reltol in reltols
-        col = Float64[]
+        col = String[]
         for abstol in abstols
             info = filtersingle(x->(x.abstol == abstol) & (x.reltol == reltol), infos)
             if !isnothing(info)
-                push!(col, maximum(info.residuals))
+                val = maximum(LinearAlgebra.norm(info))
+                sval = round(val; sigdigits=3)
+                if val == best
+                    push!(col, "*** $sval ***")
+                else
+                    push!(col, string(sval))
+                end
             else
-                push!(col, NaN)
+                push!(col, "N/A")
             end
         end
         push!(cols, col)
     end
 
-    pretty_table(hcat(abstols, cols...); header)
+    pretty_table(io, hcat(abstols, cols...); header, title="Summary of Max Residuals")
 end
 
 
-Base.show(io::IO, ::MIME"text/plain", infos::Vector{ResidualInfo}) = show_summary(infos)
+Base.show(io::IO, ::MIME"text/plain", infos::Vector{ResidualInfo}) = show_summary(io, infos)
 
 
 end # module ModelingToolkitTolerances

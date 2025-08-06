@@ -86,8 +86,9 @@ module PlotsExt
 
             resids = filter(x->x.abstol==abstol, infos)
 
+
             
-            residuals = map(x->summary(x.residuals), resids)
+            residuals = map(x->summary(LinearAlgebra.norm(x)), resids)
             reltols = map(x->x.reltol, resids)
 
             exponent = -round(Int,log10(abstol))
