@@ -30,7 +30,7 @@ const ALGEBRAIC = ResidualSettings(false, false, true)
 const DIFFERENTIAL = ResidualSettings(false, true, false)
 
 const abstols=[1e-3, 1e-6, 1e-9]
-const reltols=[1e-3, 1e-6, 1e-9]
+const reltols=[1e-3, 1e-6, 1e-9, 1e-12]
 
 """
     residual(sol::ODESolution, tms = sol.t; abstol=0.0, reltol=0.0, timing=0.0)

@@ -110,20 +110,24 @@ plot(sol; xlims=(0, 5e-6))
 # Rodas4
 resids = analysis(prob, Rodas4(), 0:1e-4:time)
 #=
-┌────────┬────────────────┬─────────────────┬─────────────────┐
-│ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │
-├────────┼────────────────┼─────────────────┼─────────────────┤
-│  0.001 │        16310.4 │         3496.79 │         1827.51 │
-│ 1.0e-6 │        12888.2 │          65.512 │          28.823 │
-│ 1.0e-9 │        16463.4 │         82.4328 │        0.440874 │
-└────────┴────────────────┴─────────────────┴─────────────────┘
+┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
+│ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
+├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
+│  0.001 │        16310.4 │         3496.79 │         1827.51 │          1872.54 │
+│ 1.0e-6 │        12888.2 │          65.512 │          28.823 │          26.6936 │
+│ 1.0e-9 │        16463.4 │         82.4328 │        0.440874 │         0.175769 │
+└────────┴────────────────┴─────────────────┴─────────────────┴──────────────────┘
 =#
 
 # Here we see the best tolerance to use is abstol=1e-9, reltol=1e-9
 plot(resids)
 # Note: the max residual is still close to 1, not high quality
 
-sol = solve(prob, Rodas4(); abstol=1e-9, reltol=1e-9)
+# based on the trend we can try an even lower reltol...
+sol = solve(prob, Rodas4(); abstol=1e-9, reltol=1e-12)
+res = residual(sol, 0:1e-4:time)
+maximum(res.residuals) # this gives the lowest max residual of 0.176
+
 plot(sol; xlims=(0, 5e-6))
 
 
