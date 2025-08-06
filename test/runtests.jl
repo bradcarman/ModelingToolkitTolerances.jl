@@ -29,12 +29,12 @@ res = residual(sol, times)
 
 resids = analysis(prob, Tsit5());
 
-@test length(resids) == 9
+@test length(resids) == 12
 @test resids[1].reltol == 1e-3
 @test resids[1].abstol == 1e-3
 
 @test maximum(resids[1].residuals[:,1]) > 1.0
-@test maximum(resids[9].residuals[:,1]) < 1e-3
+@test maximum(resids[end].residuals[:,1]) < 1e-3
 
 
 p = plot(res)
