@@ -71,7 +71,7 @@ module PlotsExt
     superscript(n::Integer) = join(SUPERSCRIPT_DIGITS[begin .+ reverse(digits(n))])
     subscript(n::Integer)   = join(SUBSCRIPT_DIGITS[begin .+ reverse(digits(n))])
 
-    function Plots.plot(infos::Vector{ResidualInfo}; summary=maximum)
+    function Plots.plot(infos::Vector{ResidualInfo}; summary=maximum, leg=:bottomright)
 
         # defaults
         # abstol = 1e-6
@@ -81,8 +81,7 @@ module PlotsExt
         reltols = map(x->x.reltol, infos) |> unique
 
         # xtick_labels = "10^" .* string.(round.(Int,log10.(reltols)))
-
-        p= Plots.plot(; ylabel="max residual", xlabel="reltol", xscale=:log10, yscale=:log10, leg=:bottomright, xticks=reltols)
+        p= Plots.plot(; ylabel="max residual", xlabel="reltol", xscale=:log10, yscale=:log10, leg, xticks=reltols)
         for abstol in abstols
 
             resids = filter(x->x.abstol==abstol, infos)

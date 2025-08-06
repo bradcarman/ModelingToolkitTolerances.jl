@@ -3,6 +3,8 @@ using SciMLBase
 using ForwardDiff
 using ModelingToolkit
 using LinearAlgebra
+using FilterHelpers
+using PrettyTables
 
 export residual, analysis
 
@@ -26,6 +28,9 @@ ResidualSettings(eq::Int) = ResidualSettings([eq], false, false)
 const SUMMARY = ResidualSettings(true, false, false)
 const ALGEBRAIC = ResidualSettings(false, false, true)
 const DIFFERENTIAL = ResidualSettings(false, true, false)
+
+const abstols=[1e-3, 1e-6, 1e-9]
+const reltols=[1e-3, 1e-6, 1e-9]
 
 """
     residual(sol::ODESolution, tms = sol.t; abstol=0.0, reltol=0.0, timing=0.0)
@@ -104,15 +109,15 @@ Runs a 3 x 3 study of `abstol` and `reltol` = [1e-3, 1e-6, 1e-9].  Returns a `Ve
 """
 function analysis(prob::ODEProblem, solver, tms = collect(prob.tspan[1]:1e-3:prob.tspan[2]); kwargs...)
    
-    abstols=[1e-3, 1e-6, 1e-9]
-    reltols=[1e-3, 1e-6, 1e-9]
     residuals = ResidualInfo[]
     for (i,abstol) in enumerate(abstols)
         for (j,reltol) in enumerate(reltols)
             # solve(prob, solver; abstol, reltol, kwargs...)
             timing = @timed sol = solve(prob, solver; abstol, reltol, kwargs...)
-            res = residual(sol, tms; abstol, reltol, timing = timing.time) #TODO: does timing.time include the compile time?
-            push!(residuals, res)
+            if sol.retcode == ReturnCode.Success
+                res = residual(sol, tms; abstol, reltol, timing = timing.time) #TODO: does timing.time include the compile time?
+                push!(residuals, res)
+            end
         end
     end
 
@@ -145,6 +150,35 @@ function no_simplify(sys::ODESystem)
 
     return complete(system)
 end
+
+
+function show_summary(infos::Vector{ResidualInfo})
+        header = ["abstol"]
+    for reltol in reltols
+        push!(header, "reltol = $reltol")
+    end
+    
+    
+    
+    cols = Vector{Float64}[]
+    for reltol in reltols
+        col = Float64[]
+        for abstol in abstols
+            info = filtersingle(x->(x.abstol == abstol) & (x.reltol == reltol), infos)
+            if !isnothing(info)
+                push!(col, maximum(info.residuals))
+            else
+                push!(col, NaN)
+            end
+        end
+        push!(cols, col)
+    end
+
+    pretty_table(hcat(abstols, cols...); header)
+end
+
+
+Base.show(io::IO, ::MIME"text/plain", infos::Vector{ResidualInfo}) = show_summary(infos)
 
 
 end # module ModelingToolkitTolerances
