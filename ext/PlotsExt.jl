@@ -4,6 +4,7 @@ module PlotsExt
     using ModelingToolkitTolerances: ResidualInfo, ResidualSettings, SUMMARY
     using FilterHelpers
     using LinearAlgebra
+    using SciMLBase
 
     function Plots.plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY)
         p = Plots.plot(xlabel="time [s]", ylabel="residual")
@@ -153,5 +154,26 @@ module PlotsExt
         return Plots.plot!(p, data[1,:], data[2,:]; marker=:dot, xlabel="max residual", ylabel="time [s]", xscale=:log10, yscale=:log10)
     end
 
+    function ModelingToolkitTolerances.plotr(sol::ODESolution; idxs, residual_limit=1, kwargs...)
+
+        res = residual(sol)
+
+        p = Plots.plot(sol; idxs, kwargs...)
+
+        y_min, y_max = Plots.ylims(p)
+
+        xs = res.t
+        ys = LinearAlgebra.norm(res)
+
+        zs = zeros(2, length(xs))
+        zs[1,:] = ys
+        zs[2,:] = ys
+
+        heatmap!(p, xs, [y_min, y_max], zs; cmap=cgrad([:white, :red]), fillalpha=0.25, clim=(0, residual_limit))
+
+        ylims!(p, y_min, y_max)
+        
+        return p
+    end
 
 end
