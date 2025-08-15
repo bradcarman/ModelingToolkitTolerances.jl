@@ -1,7 +1,7 @@
 name = "ModelingToolkitTolerances"
 uuid = "cca81fe9-e5fd-44f6-ad29-5b4f39e14206"
 authors = ["Brad Carman <bradleygcarman@gmail.com>"]
-version = "0.3.0"
+version = "0.4.0"
 
 [deps]
 FilterHelpers = "d8f44d74-4a63-4059-add9-16c5740a0809"

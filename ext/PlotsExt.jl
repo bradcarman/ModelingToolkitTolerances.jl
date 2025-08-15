@@ -8,7 +8,7 @@ module PlotsExt
 
     function Plots.plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY)
         p = Plots.plot(xlabel="time [s]", ylabel="residual")
-        
+
         differential_vars = if settings.differential isa Bool
             if settings.differential
                 info.differential_vars
@@ -154,24 +154,50 @@ module PlotsExt
         return Plots.plot!(p, data[1,:], data[2,:]; marker=:dot, xlabel="max residual", ylabel="time [s]", xscale=:log10, yscale=:log10)
     end
 
-    function ModelingToolkitTolerances.plotr(sol::ODESolution; idxs, residual_limit=1, kwargs...)
-
-        res = residual(sol)
-
+    
+    function Plots.plot(sol::ODESolution, residual_settings; idxs, kwargs...)
         p = Plots.plot(sol; idxs, kwargs...)
+        add_heatmap!(p, sol, residual_settings)
+        return p
+    end
 
-        y_min, y_max = Plots.ylims(p)
+    function Plots.plot!(sol::ODESolution, residual_settings; idxs, kwargs...)
+        p = Plots.plot!(sol; idxs, kwargs...)
+        add_heatmap!(p, sol, residual_settings)
+        return p
+    end
 
-        xs = res.t
-        ys = LinearAlgebra.norm(res)
+    function add_heatmap!(p, sol, residual_settings)
 
-        zs = zeros(2, length(xs))
-        zs[1,:] = ys
-        zs[2,:] = ys
+        show_res = false
+        residual_limit = 1.0
+        if residual_settings isa Bool
+            show_res = residual_settings
+        end
 
-        heatmap!(p, xs, [y_min, y_max], zs; cmap=cgrad([:white, :red]), fillalpha=0.25, clim=(0, residual_limit))
+        if residual_limit isa Real
+            residual_limit = residual_settings
+            show_res = residual_limit > 0
+        end
 
-        ylims!(p, y_min, y_max)
+        #TODO: handle additional settings
+
+        if show_res
+            res = residual(sol)
+            y_min, y_max = Plots.ylims(p)
+
+            xs = res.t
+            ys = LinearAlgebra.norm(res)
+
+            zs = zeros(2, length(xs))
+            zs[1,:] = ys
+            zs[2,:] = ys
+
+            # heatmap!(p, xs, [y_min, y_max], zs; cmap=cgrad([:white, :red]), fillalpha=0.25, clim=(0, residual_limit))
+            # ylims!(p, y_min, y_max)
+
+            plot!(twinx(), xs, ys; fillrange=0 .* ys, ylims=(0, residual_limit), fillcolor=:red, fillalpha=0.25, label=nothing, lc=nothing, ylabel="residual", ytickfontcolor=:red, yforeground_color_axis=:red, yguidefontcolor=:red, yforeground_color_border=:red)
+        end
         
         return p
     end

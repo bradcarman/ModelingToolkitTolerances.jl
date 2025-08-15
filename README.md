@@ -1,9 +1,106 @@
 # Introduction
 ModelingToolkitTolerances.jl is designed to help with the selection of `abstol` and `reltol` (see [stepsize control](https://docs.sciml.ai/DiffEqDocs/stable/basics/common_solver_opts/) for more info) when using ModelingToolkit.jl and DifferentialEquations.jl to solve models. These tolerances act on the error estimates computed when solving the model.  These error estimates are very abstract from the physics of the problem and are therefore challenging to set in some cases.  As can be seen from the documentation, the defaults for `abstol` and `reltol` are 1e-6 and 1e-3, respectively.  If these defaults give a bad result, how should they be adjusted?  It's very difficult to know what to do in this case, and that is where ModelingToolkitTolerances.jl seeks to help.  
 
-Furethermore, in some cases it's sometimes obvious if a model solution was good or bad, but in other cases the question arrises: What is the quality of the model solution?  What is it's "error"?  With the knowledge that we have from a ModelingToolkit.jl model in addition to the power of Automatic Differentiation, we can now solve for the model error, and even check the error of each solved equation, whether it was algebraic or differential.  Let's explore an example of how this works.
+Furethermore, in some cases it's sometimes obvious if a model solution was good or bad, but in other cases the question arrises: What is the quality of the model solution?  What is it's "error"?  With the knowledge that we have from a ModelingToolkit.jl model in addition to the power of Automatic Differentiation, we can now solve for the model error, and even check the error of each solved equation, whether it was algebraic or differential.  One of the easiest ways to use this package is to simply check the quality of a model solution.  This can be done in a few different ways.  
 
-# Example
+## Graphically
+Take the following simple ODE of $x′ = x/4$.  If we use the `Euler` method with a large step size, we know that this will provide a low quality solution.  Let's take a look at the solution with a step size of 2s.
+
+```julia
+using ModelingToolkit, OrdinaryDiffEq, Plots
+using ModelingToolkit: D_nounits as D, t_nounits as t
+vars = @variables x(t)=1
+eq = D(x) ~ x/4
+@mtkbuild sys = ODESystem([eq], t, vars, [])
+prob = ODEProblem(sys, [], (0, 10))
+sol = solve(prob, Euler(); dt=2, adaptive=false)
+plot(sol; idxs=x)
+```
+
+![](figures/README_1_1.png)
+
+
+
+Without the analytical solution, we don't know how to quantify the error.  With `ModelingToolkitTolerances` we can now estimate this error.  This can be seen visually by adding `true` (or a number to represent the residual limit) to the 2nd argument of `plot(sol::ODESolution, residual_settings::Union{Bool, Real}; kwargs...)`
+
+```julia
+using ModelingToolkitTolerances
+plot(sol, true; idxs=x) # residual limit defaults to 1.0
+```
+
+![](figures/README_2_1.png)
+
+
+
+Adjusting the residual limit gives...
+
+```julia
+plot(sol, 0.5; idxs=x) # residual limit set to 0.5
+```
+
+![](figures/README_3_1.png)
+
+
+
+## Numerically
+To get the residual information directly we can use the function `residual(sol::ODESolution)`...
+
+```julia
+res = residual(sol)
+plot(res)
+```
+
+![](figures/README_4_1.png)
+
+
+
+We can convert this to a single number by taking the `maximum` of the `norm`.
+
+```julia
+using LinearAlgebra
+r = maximum(norm(res))
+```
+
+```
+0.4359462665530558
+```
+
+
+
+
+
+When using models in an algrithm, say in a loss function for example, it's a good idea to add this to a quality check.  For example...
+
+```julia
+residual_limit = 0.1
+accept_result = (sol.retcode == ReturnCode.Success) & (r < residual_limit)
+```
+
+```
+false
+```
+
+
+
+
+
+
+If we decrease the step size we should get a better result.  Now we see an acceptable result...
+
+```julia
+sol = solve(prob, Euler(); dt=0.1, adaptive=false)
+res = residual(sol)
+r = maximum(norm(res)) # 0.05
+accept_result = (sol.retcode == ReturnCode.Success) & (r < residual_limit) # true
+plot(sol, true; idxs=x)
+```
+
+![](figures/README_7_1.png)
+
+
+
+
+# Using ModelingToolkitTolerances 
 ## How to explore tolerance settings
 Take the following hydraulic model of a pressure source, connected to a fixed volume with a valve.  The valve starts closed and then opens with a linear ramp.  We would expect to see the pressure in the volume rise smoothly, quickly and then slowly, in an S shaped ramp, tabling off at a constant pressure matching the source.  
 
@@ -45,7 +142,7 @@ plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
 scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
 ```
 
-![](figures/README_1_1.png)
+![](figures/README_8_1.png)
 
 
 
@@ -57,7 +154,7 @@ resid = residual(sol, 0:0.01:5)
 plot(resid)
 ```
 
-![](figures/README_2_1.png)
+![](figures/README_9_1.png)
 
 
 
@@ -87,7 +184,7 @@ In plotted form...
 plot(resids)
 ```
 
-![](figures/README_4_1.png)
+![](figures/README_11_1.png)
 
 
 
@@ -100,13 +197,13 @@ Plots.plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
 Plots.scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
 ```
 
-![](figures/README_5_1.png)
+![](figures/README_12_1.png)
 
 
 
 As can be seen we now get the expected smooth solution to a constant pressure.
 
-# Work Precision
+## Work Precision
 We can also get a work precision plot based on the calculated residual.
 
 ```julia
@@ -114,11 +211,11 @@ using ModelingToolkitTolerances: work_precision
 work_precision(resids)
 ```
 
-![](figures/README_6_1.png)
+![](figures/README_13_1.png)
 
 
 
-## Advanced Use
+# Advanced Use
 Note that we have used `@mtkbuild` which runs `structural_simplify()` on the model and reduces the 20 equation system down to 1 equation.  So what if we wanted to see the residual of each of those equations individually?  This might help us determine which equation is causing the model to struggle.  To do this we will use the function `no_simplify()`...
 
 ```julia
@@ -135,7 +232,7 @@ Plots.plot(sol; idxs=sys.vol₊port₊p)
 Plots.scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
 ```
 
-![](figures/README_7_1.png)
+![](figures/README_14_1.png)
 
 
 
@@ -146,7 +243,7 @@ resid = residual(sol, 0:0.01:1)
 plot(resid)
 ```
 
-![](figures/README_8_1.png)
+![](figures/README_15_1.png)
 
 
 
@@ -160,7 +257,7 @@ p2 = plot(resid, DIFFERENTIAL)
 plot(p1,p2)
 ```
 
-![](figures/README_9_1.png)
+![](figures/README_16_1.png)
 
 
 
@@ -172,7 +269,7 @@ using ModelingToolkitTolerances: ResidualSettings
 plot(resid, ResidualSettings(9))
 ```
 
-![](figures/README_10_1.png)
+![](figures/README_17_1.png)
 
 
 
@@ -224,7 +321,7 @@ sol = solve(prob, Tsit5())
 plot(sol; idxs=T)
 ```
 
-![](figures/README_12_1.png)
+![](figures/README_19_1.png)
 
 
 
@@ -253,11 +350,11 @@ We can now calculate the residual as follows...
 ```julia
 resf(t) = ( (h * A) / (m * c_p) * (T_inf - Tsol(t)) ) - ( dTsol(t) )
 
-times = 0:0.1:10
+times = 0:1e-3:10
 plot(times, resf; label="manual")
 ```
 
-![](figures/README_15_1.png)
+![](figures/README_22_1.png)
 
 
 
@@ -268,7 +365,7 @@ res = residual(sol, times)
 plot!(res.t, res.residuals[:,1]; label="ModelingToolkitTolerances")
 ```
 
-![](figures/README_16_1.png)
+![](figures/README_23_1.png)
 
 
 
@@ -297,7 +394,7 @@ Summary of Max Residuals
 plot(resids)
 ```
 
-![](figures/README_18_1.png)
+![](figures/README_25_1.png)
 
 
 
@@ -308,19 +405,19 @@ sol = solve(prob, Tsit5(); reltol=1e-6)
 plot(sol; idxs=T)
 ```
 
-![](figures/README_19_1.png)
+![](figures/README_26_1.png)
 
 
 
 As can be seen, we now have a stable solution, as expected.
 
-# Important Note
+## Important Note
 Using `saveat` can affect the quality of the `ForwardDiff.derivative` computed from the `ODESolution`.  Avoid setting this keyword when using `residual()` or `analysis()`.  
 
 # API
 
 ```
-residual(sol::ODESolution, tms = sol.t; abstol=0.0, reltol=0.0, timing=0.0)
+residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
 ```
 
 Calculates residual information for `sol::ODESolution` coming from a `ModelingToolkit` model at the times `tms`, which defaults to the solved time points `sol.t`.  Returns as `ResidualInfo` object.

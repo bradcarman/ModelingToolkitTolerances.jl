@@ -38,7 +38,7 @@ function default_range(sol::ODESolution)
 end
 
 """
-    residual(sol::ODESolution, tms = sol.t; abstol=0.0, reltol=0.0, timing=0.0)
+    residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
 
 Calculates residual information for `sol::ODESolution` coming from a `ModelingToolkit` model at the times `tms`, which defaults to the solved time points `sol.t`.  Returns as `ResidualInfo` object.
 
@@ -48,7 +48,8 @@ Keyword Arguments (used by `analysis() function`):
 - `timing`: this records the corresponding solution time reference.  Used by `analysis()` function.
 """
 function residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
-    prob = sol.prob
+    #NOTE: we re-create the ODEProblem so we have the full f function (this seems to be dropped from the ODESolution)
+    prob = ODEProblem(sol.prob.f.sys, sol(0.0), (tms[1], tms[end]); build_initializeprob=false)
     f = prob.f
     #f_oop = f.f_oop
 
