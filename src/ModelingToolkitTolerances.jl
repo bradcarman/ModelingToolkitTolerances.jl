@@ -6,7 +6,7 @@ using LinearAlgebra
 using FilterHelpers
 using PrettyTables
 
-export residual, analysis
+export residual, analysis, plotr
 
 struct ResidualInfo
     differential_vars::Vector{Int}
@@ -32,8 +32,13 @@ const DIFFERENTIAL = ResidualSettings(false, true, false)
 const abstols=[1e-3, 1e-6, 1e-9]
 const reltols=[1e-3, 1e-6, 1e-9, 1e-12]
 
+function default_range(sol::ODESolution) 
+    n = min(Int(1e5), max(1000, 10 * length(sol)))
+    return range(sol.t[1], sol.t[end], n)
+end
+
 """
-    residual(sol::ODESolution, tms = sol.t; abstol=0.0, reltol=0.0, timing=0.0)
+    residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
 
 Calculates residual information for `sol::ODESolution` coming from a `ModelingToolkit` model at the times `tms`, which defaults to the solved time points `sol.t`.  Returns as `ResidualInfo` object.
 
@@ -42,8 +47,9 @@ Keyword Arguments (used by `analysis() function`):
 - `reltol`: same as above, but for `reltol`
 - `timing`: this records the corresponding solution time reference.  Used by `analysis()` function.
 """
-function residual(sol::ODESolution, tms = sol.t; abstol=0.0, reltol=0.0, timing=0.0)
-    prob = sol.prob
+function residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
+    #NOTE: we re-create the ODEProblem so we have the full f function (this seems to be dropped from the ODESolution)
+    prob = ODEProblem(sol.prob.f.sys, sol(0.0), (tms[1], tms[end]); build_initializeprob=false)
     f = prob.f
     #f_oop = f.f_oop
 
@@ -126,6 +132,7 @@ end
 
 function work_precision end
 function work_precision! end
+function plotr end
 
 function no_simplify(sys::ODESystem)
 
