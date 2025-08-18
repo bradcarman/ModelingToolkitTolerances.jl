@@ -113,7 +113,7 @@ Runs a 3 x 3 study of `abstol` and `reltol` = [1e-3, 1e-6, 1e-9].  Returns a `Ve
 
 
 """
-function analysis(prob::ODEProblem, solver, tms = collect(prob.tspan[1]:1e-3:prob.tspan[2]); kwargs...)
+function analysis(prob::ODEProblem, solver, tms = range(prob.tspan[1], prob.tspan[2], 100); kwargs...)
    
     residuals = ResidualInfo[]
     for (i,abstol) in enumerate(abstols)
@@ -134,27 +134,62 @@ function work_precision end
 function work_precision! end
 function plotr end
 
-function no_simplify(sys::ODESystem)
+function no_simplify(sys::System)
 
     expanded_sys = expand_connections(sys)
     eqs = equations(expanded_sys)
     vars = unknowns(expanded_sys)
     pars = parameters(expanded_sys)
-    iv = ModelingToolkit.independent_variable(expanded_sys)
+    ivs = ModelingToolkit.independent_variables(expanded_sys)
+    @assert length(ivs) == 1 "Only systems with 1 independent variable is supported"
+    iv = ivs[1]
     defs = ModelingToolkit.defaults(expanded_sys)
 
     eqs_ = Equation[]
     for eq in eqs
-        if typeof(eq.lhs) != ModelingToolkit.Connection && !ModelingToolkit._iszero(eq.lhs) && !ModelingToolkit.isdifferential(eq.lhs)
+        
+        if ModelingToolkit.is_diff_equation(eq)
+            new_eq = move_differentials_to_lhs(eq)
+            push!(eqs_, new_eq)
+
+        elseif typeof(eq.lhs) != ModelingToolkit.Connection && !ModelingToolkit._iszero(eq.lhs) && !ModelingToolkit.isdifferential(eq.lhs)
             push!(eqs_, 0 ~ eq.rhs - eq.lhs)
+            
         else
             push!(eqs_, eq)
         end
     end
 
-    system = ODESystem(eqs_, iv, vars, pars; name=expanded_sys.name, defaults=defs)
+    system = System(eqs_, iv, vars, pars; name=ModelingToolkit.get_name(expanded_sys), defaults=defs)
 
     return complete(system)
+end
+
+function move_differentials_to_lhs(eq)
+
+
+
+    trms = union(terms(eq.rhs), terms(eq.lhs))
+
+    dtrms = SymbolicUtils.BasicSymbolic{Real}[]
+
+    for e in [eq.lhs, eq.rhs]
+        x = Symbolics.filterchildren(Symbolics.is_derivative, e)
+        if !isnothing(x)
+            append!(dtrms, x)
+        end
+    end
+
+    dtrm = unique(dtrms)
+    @assert length(dtrm) == 1 "Can only work with systems containing 1 unique differential term per equation: found $eq"
+    dtrm = first(dtrm)
+
+    new_rhs = ModelingToolkit.solve_for(eq, dtrm)
+    new_lhs = dtrm
+
+    new_eq = new_lhs ~ new_rhs
+
+    return new_eq
 end
 
 

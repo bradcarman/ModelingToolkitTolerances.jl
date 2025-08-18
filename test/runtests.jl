@@ -41,3 +41,18 @@ p = plot(res)
 @test p isa Plots.Plot
 p = plot(resids)
 @test p isa Plots.Plot
+
+
+# Check equation manipulation
+@variables x(t)
+eq = D(x) ~ x
+new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
+@test isequal(new_eq.rhs, x)
+
+eq = 0 ~ D(x) + x
+new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
+@test isequal(new_eq.rhs, -x)
+
+eq = 0 ~ 2D(x) + x
+new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
+@test isequal(new_eq.rhs, -x/2)
