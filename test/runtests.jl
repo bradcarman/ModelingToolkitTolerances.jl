@@ -56,3 +56,8 @@ new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
 eq = 0 ~ 2D(x) + x
 new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
 @test isequal(new_eq.rhs, -x/2)
+
+
+# wall time checker
+@time sol, model_time, cpu_time = solve(prob, true, Tsit5());
+plot(model_time, cpu_time; xlabel="model time [s]", ylabel="cpu time [s]")

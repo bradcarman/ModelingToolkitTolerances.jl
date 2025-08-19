@@ -238,36 +238,50 @@ end
 
 Base.show(io::IO, ::MIME"text/plain", infos::Vector{ResidualInfo}) = show_summary(io, infos)
 
+"""
+    get_tracked_time_callback() -> callback, tracked_times
 
-function DiffEqBase.solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; kwargs...)
+Creates a callback that tracks the CPU time during a solve.  
+"""
+function get_tracked_time_callback()
+    tracked_times = Vector{Float64}[]
 
+    track_time(u, t, integrator) = begin
+        current_time = Base.time_ns()
+        push!(tracked_times, [t, current_time])
+        nothing
+    end 
+
+    callback = FunctionCallingCallback(track_time)  
+    return callback, tracked_times
+end
+
+function process_tracked_time(tracked_times::Vector{Vector{Float64}})
+    ys = hcat(tracked_times...)
+    model_time = ys[1,:]
+    cpu_time = [0; diff(ys[2,:])]/1e9
+    return model_time, cpu_time
+end
+
+"""
+    solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; callback = nothing, kwargs...) -> sol, model_time, cpu_time
+
+Returns the `sol::ODESolution` along with corresponding CPU timing information: 
+- `model_time::Vector{Float64}`: evaluation times of the model 
+- `cpu_time::Vector{Float64}`: corresponding CPU run time at each `model_time` point
+"""
+function DiffEqBase.solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; callback = nothing, kwargs...)
+
+    !isnothing(callback) && error("Can't use with other callbacks directly.  Use `get_tracked_time_callback()`` to provide a `CallbackSet` with required callbacks")
     
-    callback = nothing
-    wall_times = nothing
     if track_cpu_time
-
-        wall_times = Vector{Float64}[]
-
-        func(u, t, integrator) = begin
-            current_time = Base.time_ns()
-            println(current_time)
-            push!(wall_times, [integrator.t, current_time])
-            nothing
-        end 
-
-        callback = FunctionCallingCallback(func)
-
-        
+        callback, tracked_times = get_tracked_time_callback()
+        sol = solve(prob, args...; callback, kwargs...)
+        model_time, cpu_time = process_tracked_time(tracked_times)
+        return sol, model_time, cpu_time
+    else
+        return solve(prob, args...; kwargs...)
     end
-
-    sol = solve(prob, args...; callback, kwargs...)
-
-    if track_cpu_time
-        ys = hcat(wall_times...)
-        wall_times = [ys[1,:] (ys[2,:].-ys[2,1])/1e9]
-    end
-    
-    return sol, wall_times
 end
 
 
