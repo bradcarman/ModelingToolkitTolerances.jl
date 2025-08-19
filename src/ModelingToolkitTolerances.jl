@@ -5,6 +5,8 @@ using ModelingToolkit
 using LinearAlgebra
 using FilterHelpers
 using PrettyTables
+using DiffEqBase
+using DiffEqCallbacks
 
 export residual, analysis, plotr
 
@@ -235,6 +237,38 @@ end
 
 
 Base.show(io::IO, ::MIME"text/plain", infos::Vector{ResidualInfo}) = show_summary(io, infos)
+
+
+function DiffEqBase.solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; kwargs...)
+
+    
+    callback = nothing
+    wall_times = nothing
+    if track_cpu_time
+
+        wall_times = Vector{Float64}[]
+
+        func(u, t, integrator) = begin
+            current_time = Base.time_ns()
+            println(current_time)
+            push!(wall_times, [integrator.t, current_time])
+            nothing
+        end 
+
+        callback = FunctionCallingCallback(func)
+
+        
+    end
+
+    sol = solve(prob, args...; callback, kwargs...)
+
+    if track_cpu_time
+        ys = hcat(wall_times...)
+        wall_times = [ys[1,:] (ys[2,:].-ys[2,1])/1e9]
+    end
+    
+    return sol, wall_times
+end
 
 
 end # module ModelingToolkitTolerances
