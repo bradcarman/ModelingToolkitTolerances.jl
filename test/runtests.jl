@@ -13,7 +13,7 @@ end
 eqs = [
     D(T) ~ (h * A) / (m * c_p) * (T_inf - T)
 ]
-@mtkbuild sys = ODESystem(eqs, t, vars, [])
+@mtkcompile sys = System(eqs, t, vars, [])
 prob = ODEProblem(sys, [], (0, 10))
 sol = solve(prob, Tsit5())
 

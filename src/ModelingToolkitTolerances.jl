@@ -49,29 +49,33 @@ Keyword Arguments (used by `analysis() function`):
 """
 function residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
     #NOTE: we re-create the ODEProblem so we have the full f function (this seems to be dropped from the ODESolution)
-    prob = ODEProblem(sol.prob.f.sys, sol(0.0), (tms[1], tms[end]); build_initializeprob=false)
-    f = prob.f
+    # prob = ODEProblem(sol.prob.f.sys, sol(0.0), (tms[1], tms[end]); build_initializeprob=false)
+    # f = prob.f
     #f_oop = f.f_oop
 
-    function f_oop(u, p, t) 
-        du = similar(u)
-        f(du, u, p, t)
-        return du
-    end
+    # function f_oop(u, p, t) 
+    #     du = similar(u)
+    #     f(du, u, p, t)
+    #     return du
+    # end
 
+    prob = sol.prob
+    f = prob.f
     p = prob.p
     sys = f.sys
     eqs = full_equations(sys)
     ps = parameters(sys)
     sts = unknowns(sys)
-    st_vals = [st => sol(tms; idxs=st).u for st in sts]
-    p_vals = [p => sol(0.0; idxs=p) for p in ps]
+    # st_vals = [st => sol(tms; idxs=st).u for st in sts]
+    # p_vals = [p => sol(0.0; idxs=p) for p in ps]
     n = length(tms)
 
     differential_vars = Int[]
     algebraic_vars = Int[]
     residuals = Vector{Float64}[]
-    rhs_data = hcat([f_oop(sol(tm), p, tm) for tm in tms]...)
+    # rhs_data = hcat([f_oop(sol(tm), p, tm) for tm in tms]...)
+
+
     for (i,eq) in enumerate(eqs)
 
         lhs = eq.lhs
@@ -85,8 +89,10 @@ function residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol
             push!(algebraic_vars, i)
             zero.(tms)
         end
+        
+        rhs_data = sol(tms; idxs=rhs)
 
-        residual = rhs_data[i,:] .- lhs_data
+        residual = rhs_data .- lhs_data
 
         push!(residuals, residual)
     end
