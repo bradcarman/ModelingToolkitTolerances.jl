@@ -1,7 +1,7 @@
 name = "ModelingToolkitTolerances"
 uuid = "cca81fe9-e5fd-44f6-ad29-5b4f39e14206"
 authors = ["Brad Carman <bradleygcarman@gmail.com>"]
-version = "0.4.0"
+version = "0.5.0"
 
 [deps]
 FilterHelpers = "d8f44d74-4a63-4059-add9-16c5740a0809"
@@ -10,6 +10,7 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
+Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 
 [weakdeps]
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
@@ -21,9 +22,10 @@ PlotsExt = "Plots"
 FilterHelpers = "0.2.0"
 ForwardDiff = "0.10.38"
 LinearAlgebra = "1.9.0"
-ModelingToolkit = "9"
+ModelingToolkit = "10"
 PrettyTables = "2.4.0"
 SciMLBase = "2.107.0"
+Symbolics = "6.51.0"
 julia = "1.9"
 
 [extras]

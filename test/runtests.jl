@@ -13,7 +13,7 @@ end
 eqs = [
     D(T) ~ (h * A) / (m * c_p) * (T_inf - T)
 ]
-@mtkbuild sys = ODESystem(eqs, t, vars, [])
+@mtkcompile sys = System(eqs, t, vars, [])
 prob = ODEProblem(sys, [], (0, 10))
 sol = solve(prob, Tsit5())
 
@@ -41,3 +41,18 @@ p = plot(res)
 @test p isa Plots.Plot
 p = plot(resids)
 @test p isa Plots.Plot
+
+
+# Check equation manipulation
+@variables x(t)
+eq = D(x) ~ x
+new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
+@test isequal(new_eq.rhs, x)
+
+eq = 0 ~ D(x) + x
+new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
+@test isequal(new_eq.rhs, -x)
+
+eq = 0 ~ 2D(x) + x
+new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
+@test isequal(new_eq.rhs, -x/2)

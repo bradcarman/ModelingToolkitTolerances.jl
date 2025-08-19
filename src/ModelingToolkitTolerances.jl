@@ -49,29 +49,33 @@ Keyword Arguments (used by `analysis() function`):
 """
 function residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
     #NOTE: we re-create the ODEProblem so we have the full f function (this seems to be dropped from the ODESolution)
-    prob = ODEProblem(sol.prob.f.sys, sol(0.0), (tms[1], tms[end]); build_initializeprob=false)
-    f = prob.f
+    # prob = ODEProblem(sol.prob.f.sys, sol(0.0), (tms[1], tms[end]); build_initializeprob=false)
+    # f = prob.f
     #f_oop = f.f_oop
 
-    function f_oop(u, p, t) 
-        du = similar(u)
-        f(du, u, p, t)
-        return du
-    end
+    # function f_oop(u, p, t) 
+    #     du = similar(u)
+    #     f(du, u, p, t)
+    #     return du
+    # end
 
+    prob = sol.prob
+    f = prob.f
     p = prob.p
     sys = f.sys
     eqs = full_equations(sys)
     ps = parameters(sys)
     sts = unknowns(sys)
-    st_vals = [st => sol(tms; idxs=st).u for st in sts]
-    p_vals = [p => sol(0.0; idxs=p) for p in ps]
+    # st_vals = [st => sol(tms; idxs=st).u for st in sts]
+    # p_vals = [p => sol(0.0; idxs=p) for p in ps]
     n = length(tms)
 
     differential_vars = Int[]
     algebraic_vars = Int[]
     residuals = Vector{Float64}[]
-    rhs_data = hcat([f_oop(sol(tm), p, tm) for tm in tms]...)
+    # rhs_data = hcat([f_oop(sol(tm), p, tm) for tm in tms]...)
+
+
     for (i,eq) in enumerate(eqs)
 
         lhs = eq.lhs
@@ -85,8 +89,10 @@ function residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol
             push!(algebraic_vars, i)
             zero.(tms)
         end
+        
+        rhs_data = sol(tms; idxs=rhs)
 
-        residual = rhs_data[i,:] .- lhs_data
+        residual = rhs_data .- lhs_data
 
         push!(residuals, residual)
     end
@@ -113,7 +119,7 @@ Runs a 3 x 3 study of `abstol` and `reltol` = [1e-3, 1e-6, 1e-9].  Returns a `Ve
 
 
 """
-function analysis(prob::ODEProblem, solver, tms = collect(prob.tspan[1]:1e-3:prob.tspan[2]); kwargs...)
+function analysis(prob::ODEProblem, solver, tms = range(prob.tspan[1], prob.tspan[2], 100); kwargs...)
    
     residuals = ResidualInfo[]
     for (i,abstol) in enumerate(abstols)
@@ -134,27 +140,62 @@ function work_precision end
 function work_precision! end
 function plotr end
 
-function no_simplify(sys::ODESystem)
+function no_simplify(sys::System)
 
     expanded_sys = expand_connections(sys)
     eqs = equations(expanded_sys)
     vars = unknowns(expanded_sys)
     pars = parameters(expanded_sys)
-    iv = ModelingToolkit.independent_variable(expanded_sys)
+    ivs = ModelingToolkit.independent_variables(expanded_sys)
+    @assert length(ivs) == 1 "Only systems with 1 independent variable is supported"
+    iv = ivs[1]
     defs = ModelingToolkit.defaults(expanded_sys)
 
     eqs_ = Equation[]
     for eq in eqs
-        if typeof(eq.lhs) != ModelingToolkit.Connection && !ModelingToolkit._iszero(eq.lhs) && !ModelingToolkit.isdifferential(eq.lhs)
+        
+        if ModelingToolkit.is_diff_equation(eq)
+            new_eq = move_differentials_to_lhs(eq)
+            push!(eqs_, new_eq)
+
+        elseif typeof(eq.lhs) != ModelingToolkit.Connection && !ModelingToolkit._iszero(eq.lhs) && !ModelingToolkit.isdifferential(eq.lhs)
             push!(eqs_, 0 ~ eq.rhs - eq.lhs)
+            
         else
             push!(eqs_, eq)
         end
     end
 
-    system = ODESystem(eqs_, iv, vars, pars; name=expanded_sys.name, defaults=defs)
+    system = System(eqs_, iv, vars, pars; name=ModelingToolkit.get_name(expanded_sys), defaults=defs)
 
     return complete(system)
+end
+
+function move_differentials_to_lhs(eq)
+
+
+
+    trms = union(terms(eq.rhs), terms(eq.lhs))
+
+    dtrms = SymbolicUtils.BasicSymbolic{Real}[]
+
+    for e in [eq.lhs, eq.rhs]
+        x = Symbolics.filterchildren(Symbolics.is_derivative, e)
+        if !isnothing(x)
+            append!(dtrms, x)
+        end
+    end
+
+    dtrm = unique(dtrms)
+    @assert length(dtrm) == 1 "Can only work with systems containing 1 unique differential term per equation: found $eq"
+    dtrm = first(dtrm)
+
+    new_rhs = ModelingToolkit.solve_for(eq, dtrm)
+    new_lhs = dtrm
+
+    new_eq = new_lhs ~ new_rhs
+
+    return new_eq
 end
 
 
