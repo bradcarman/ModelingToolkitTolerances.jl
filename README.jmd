@@ -11,7 +11,7 @@ using ModelingToolkit, OrdinaryDiffEq, Plots
 using ModelingToolkit: D_nounits as D, t_nounits as t
 vars = @variables x(t)=1
 eq = D(x) ~ x/4
-@mtkbuild sys = ODESystem([eq], t, vars, [])
+@mtkcompile sys = System([eq], t, vars, [])
 prob = ODEProblem(sys, [], (0, 10))
 sol = solve(prob, Euler(); dt=2, adaptive=false)
 plot(sol; idxs=x)
@@ -73,7 +73,7 @@ import ModelingToolkitStandardLibrary.Blocks as B
 
 using Plots
 
-function System(; name)
+function ValveVolume(; name)
     pars = []
 
     systems = @named begin
@@ -89,10 +89,10 @@ function System(; name)
            connect(valve.port_b, vol.port)
            connect(valve.area, ramp.output)]
 
-    return ODESystem(eqs, t, [], pars; name, systems)
+    return System(eqs, t, [], pars; name, systems)
 end
 
-@mtkbuild sys = System()
+@mtkcompile sys = ValveVolume()
 prob = ODEProblem(sys, [], (0, 5))
 sol = solve(prob, Rodas5P()) # <-- using default abstol=1e-6 & reltol=1e-3
 plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
@@ -152,7 +152,7 @@ Note that we have used `@mtkbuild` which runs `structural_simplify()` on the mod
 ```julia
 using ModelingToolkitTolerances: no_simplify
 
-@named sys = System()
+@named sys = ValveVolume()
 sys = no_simplify(sys)
 
 st = unknowns(sys)
@@ -169,7 +169,7 @@ The residual view has also been added to the plot (with the 2nd positional argum
 
 ```julia
 using ModelingToolkitTolerances: ALGEBRAIC, DIFFERENTIAL
-
+resid = residual(sol)
 p1 = plot(resid, ALGEBRAIC)
 p2 = plot(resid, DIFFERENTIAL)
 plot(p1,p2)
@@ -206,7 +206,7 @@ end
 eqs = [
     D(T) ~ (h * A) / (m * c_p) * (T_inf - T)
 ]
-@mtkbuild sys = ODESystem(eqs, t, vars, [])
+@mtkcompile sys = System(eqs, t, vars, [])
 prob = ODEProblem(sys, [], (0, 10))
 sol = solve(prob, Tsit5())
 plot(sol; idxs=T)

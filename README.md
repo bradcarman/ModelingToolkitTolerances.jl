@@ -11,7 +11,7 @@ using ModelingToolkit, OrdinaryDiffEq, Plots
 using ModelingToolkit: D_nounits as D, t_nounits as t
 vars = @variables x(t)=1
 eq = D(x) ~ x/4
-@mtkbuild sys = ODESystem([eq], t, vars, [])
+@mtkcompile sys = System([eq], t, vars, [])
 prob = ODEProblem(sys, [], (0, 10))
 sol = solve(prob, Euler(); dt=2, adaptive=false)
 plot(sol; idxs=x)
@@ -32,16 +32,6 @@ plot(sol, true; idxs=x) # residual limit defaults to 1.0
 
 
 
-Adjusting the residual limit gives...
-
-```julia
-plot(sol, 0.5; idxs=x) # residual limit set to 0.5
-```
-
-![](figures/README_3_1.png)
-
-
-
 ## Numerically
 To get the residual information directly we can use the function `residual(sol::ODESolution)`...
 
@@ -50,7 +40,7 @@ res = residual(sol)
 plot(res)
 ```
 
-![](figures/README_4_1.png)
+![](figures/README_3_1.png)
 
 
 
@@ -73,13 +63,12 @@ When using models in an algrithm, say in a loss function for example, it's a goo
 
 ```julia
 residual_limit = 0.1
-accept_result = (sol.retcode == ReturnCode.Success) & (r < residual_limit)
+accept_result = (sol.retcode == ReturnCode.Success) && (maximum(norm(residual(sol))) < residual_limit)
 ```
 
 ```
 false
 ```
-
 
 
 
@@ -95,7 +84,7 @@ accept_result = (sol.retcode == ReturnCode.Success) & (r < residual_limit) # tru
 plot(sol, true; idxs=x)
 ```
 
-![](figures/README_7_1.png)
+![](figures/README_6_1.png)
 
 
 
@@ -116,7 +105,8 @@ import ModelingToolkitStandardLibrary.Blocks as B
 
 using Plots
 
-function System(; name)
+function ValveVolume(; name)
+
     pars = []
 
     systems = @named begin
@@ -132,17 +122,17 @@ function System(; name)
            connect(valve.port_b, vol.port)
            connect(valve.area, ramp.output)]
 
-    return ODESystem(eqs, t, [], pars; name, systems)
+    return System(eqs, t, [], pars; name, systems)
 end
 
-@mtkbuild sys = System()
+@mtkcompile sys = ValveVolume()
 prob = ODEProblem(sys, [], (0, 5))
 sol = solve(prob, Rodas5P()) # <-- using default abstol=1e-6 & reltol=1e-3
 plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
 scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
 ```
 
-![](figures/README_8_1.png)
+![](figures/README_7_1.png)
 
 
 
@@ -154,7 +144,7 @@ resid = residual(sol, 0:0.01:5)
 plot(resid)
 ```
 
-![](figures/README_9_1.png)
+![](figures/README_8_1.png)
 
 
 
@@ -169,8 +159,8 @@ Summary of Max Residuals
 ┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
 │ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
 ├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
-│  0.001 │           12.2 │            1.96 │           0.774 │             0.78 │
-│ 1.0e-6 │           12.2 │            2.14 │           0.049 │   *** 0.0112 *** │
+│  0.001 │           12.2 │           0.981 │           0.542 │            0.543 │
+│ 1.0e-6 │           12.2 │            1.05 │          0.0401 │      * 3.52e-5 * │
 │ 1.0e-9 │            N/A │             N/A │             N/A │              N/A │
 └────────┴────────────────┴─────────────────┴─────────────────┴──────────────────┘
 ```
@@ -184,7 +174,7 @@ In plotted form...
 plot(resids)
 ```
 
-![](figures/README_11_1.png)
+![](figures/README_10_1.png)
 
 
 
@@ -197,7 +187,7 @@ Plots.plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
 Plots.scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
 ```
 
-![](figures/README_12_1.png)
+![](figures/README_11_1.png)
 
 
 
@@ -207,28 +197,41 @@ As can be seen we now get the expected smooth solution to a constant pressure.
 We can also get a work precision plot based on the calculated residual.
 
 ```julia
-using ModelingToolkitTolerances: work_precision
 work_precision(resids)
+```
+
+![](figures/README_12_1.png)
+
+
+
+Here we can see that the point labeled "a6,r12" gives the optimal result, with a minimal residual and a very fast solve time to go with it.  Note the label represents the abstol and the reltol exponents, respectively.  Therefore, "a6,r12" is translated to "abstol=1e-6, reltol=1e-12".
+
+## CPU Timing
+Often areas of high error will also experience higher compute time.  It's also possible to gather this information by adding `true` as the 2nd positional argument to `solve`, for example
+
+```julia
+sol, cpu_timing = solve(prob, true, Rodas5P());
+plot(cpu_timing)
 ```
 
 ![](figures/README_13_1.png)
 
 
 
-# Advanced Use
+## Advanced Use
 Note that we have used `@mtkbuild` which runs `structural_simplify()` on the model and reduces the 20 equation system down to 1 equation.  So what if we wanted to see the residual of each of those equations individually?  This might help us determine which equation is causing the model to struggle.  To do this we will use the function `no_simplify()`...
 
 ```julia
 using ModelingToolkitTolerances: no_simplify
 
-@named sys = System()
+@named sys = ValveVolume()
 sys = no_simplify(sys)
 
 st = unknowns(sys)
 u0 = st .=> sol(0.0; idxs=st) # <-- create initialization from previous solution
-prob = ODEProblem(sys, u0, (0, 1))
+prob = ODEProblem(sys, u0, (0, 1); build_initializeprob=false)
 sol = solve(prob, Rodas5P()) # <-- using default abstol & reltol
-Plots.plot(sol; idxs=sys.vol₊port₊p)
+Plots.plot(sol, 0.05; idxs=sys.vol₊port₊p)
 Plots.scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
 ```
 
@@ -236,28 +239,19 @@ Plots.scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
 
 
 
-Here we get a very interesting solution, the adaptive time stepping is working more as expected with default tolerance.  Therefore this shows us that `structural_simplify()` is greatly influencing the solution.  Let's take a look at the residual...
+Here we get a very interesting solution, the adaptive time stepping is working more as expected with default tolerance.  Therefore this shows us that `structural_simplify()` is greatly influencing the solution.  
 
-```julia
-resid = residual(sol, 0:0.01:1)
-plot(resid)
-```
-
-![](figures/README_15_1.png)
-
-
-
-What we see here is the combined residual of all 20 equations.  If we want to look at the algebraic vs. differential equations, we can do the following...
+The residual view has also been added to the plot (with the 2nd positional argument for resdiual scale, 0.05).  What we see here is the combined residual of all 20 equations.  As can be seen the result is much better now, with some increase in residual around the transitions.  If we want to look at the algebraic vs. differential equations, we can do the following...
 
 ```julia
 using ModelingToolkitTolerances: ALGEBRAIC, DIFFERENTIAL
-
+resid = residual(sol)
 p1 = plot(resid, ALGEBRAIC)
 p2 = plot(resid, DIFFERENTIAL)
 plot(p1,p2)
 ```
 
-![](figures/README_16_1.png)
+![](figures/README_15_1.png)
 
 
 
@@ -269,7 +263,7 @@ using ModelingToolkitTolerances: ResidualSettings
 plot(resid, ResidualSettings(9))
 ```
 
-![](figures/README_17_1.png)
+![](figures/README_16_1.png)
 
 
 
@@ -315,17 +309,17 @@ end
 eqs = [
     D(T) ~ (h * A) / (m * c_p) * (T_inf - T)
 ]
-@mtkbuild sys = ODESystem(eqs, t, vars, [])
+@mtkcompile sys = System(eqs, t, vars, [])
 prob = ODEProblem(sys, [], (0, 10))
 sol = solve(prob, Tsit5())
 plot(sol; idxs=T)
 ```
 
-![](figures/README_19_1.png)
+![](figures/README_18_1.png)
 
 
 
-We are plotting the temperature, which should be smoothly cooling from 301K to 300K and reaching steady state.  But something in the numerical solution goes wrong and the temperature becomes unstable.  In this case we clearly have a measurable residual error in the solved equation.  The residual error is calculated simply as:
+We are plotting the temperature, which should be smoothly cooling from 301K to 300K and reaching steady state.  But something in the numerical solution goes wrong and the temperature becomes unstable.  In this case we clearly have a measurable residual error in the solved equation.  The residual is calculated by simply taking the left hand side of the equation subtracted from the right hand side:
 
 ```julia
 res = ( (h * A)/(m * c_p) * (T_inf - T) ) - ( D(T) )
@@ -354,7 +348,7 @@ times = 0:1e-3:10
 plot(times, resf; label="manual")
 ```
 
-![](figures/README_22_1.png)
+![](figures/README_21_1.png)
 
 
 
@@ -365,7 +359,7 @@ res = residual(sol, times)
 plot!(res.t, res.residuals[:,1]; label="ModelingToolkitTolerances")
 ```
 
-![](figures/README_23_1.png)
+![](figures/README_22_1.png)
 
 
 
@@ -382,9 +376,9 @@ Summary of Max Residuals
 ┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
 │ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
 ├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
-│  0.001 │           2.68 │          0.0105 │         0.00779 │          0.00779 │
-│ 1.0e-6 │           2.67 │         0.00241 │         1.01e-5 │          7.69e-6 │
-│ 1.0e-9 │           2.67 │          0.0024 │         2.37e-6 │  *** 2.51e-8 *** │
+│  0.001 │            2.6 │          0.0104 │          0.0068 │          0.00678 │
+│ 1.0e-6 │           2.58 │         0.00224 │         9.14e-6 │          7.32e-6 │
+│ 1.0e-9 │           2.58 │         0.00227 │         2.17e-6 │      * 2.01e-8 * │
 └────────┴────────────────┴─────────────────┴─────────────────┴──────────────────┘
 ```
 
@@ -394,7 +388,7 @@ Summary of Max Residuals
 plot(resids)
 ```
 
-![](figures/README_25_1.png)
+![](figures/README_24_1.png)
 
 
 
@@ -405,7 +399,7 @@ sol = solve(prob, Tsit5(); reltol=1e-6)
 plot(sol; idxs=T)
 ```
 
-![](figures/README_26_1.png)
+![](figures/README_25_1.png)
 
 
 
