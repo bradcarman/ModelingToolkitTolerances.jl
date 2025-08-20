@@ -8,7 +8,7 @@ using PrettyTables
 using DiffEqBase
 using DiffEqCallbacks
 
-export residual, analysis, plotr
+export residual, analysis, work_precision
 
 struct ResidualInfo
     differential_vars::Vector{Int}
@@ -140,7 +140,6 @@ end
 
 function work_precision end
 function work_precision! end
-function plotr end
 
 function no_simplify(sys::System)
 
@@ -174,9 +173,6 @@ function no_simplify(sys::System)
 end
 
 function move_differentials_to_lhs(eq)
-
-
-
     trms = union(terms(eq.rhs), terms(eq.lhs))
 
     dtrms = SymbolicUtils.BasicSymbolic{Real}[]
@@ -212,19 +208,35 @@ function show_summary(io, infos::Vector{ResidualInfo}; kwargs...)
     max_residuals = map(maximum, residuals)
     best = minimum(max_residuals)
 
+    timings = map(x->x.timing, infos)
+    best_timing = minimum(timings)
+
     cols = Vector{String}[]
     for reltol in reltols
         col = String[]
         for abstol in abstols
             info = filtersingle(x->(x.abstol == abstol) & (x.reltol == reltol), infos)
             if !isnothing(info)
+                
                 val = maximum(LinearAlgebra.norm(info))
-                sval = round(val; sigdigits=3)
+
+                timing = info.timing
+
+                # sval = formatted(val, :SCI, ndigits=3)
+                # stime = formatted(timing, :SCI, ndigits=2)
+
+                sval = string(round(val; sigdigits=3))
+                stime = string(round(timing; sigdigits=2))
+
                 if val == best
-                    push!(col, "*** $sval ***")
-                else
-                    push!(col, string(sval))
+                    sval = "* $sval *"
                 end
+
+                if timing == best_timing
+                    stime = "* $stime *"
+                end
+
+                push!(col, sval)
             else
                 push!(col, "N/A")
             end
@@ -241,7 +253,16 @@ Base.show(io::IO, ::MIME"text/plain", infos::Vector{ResidualInfo}) = show_summar
 """
     get_tracked_time_callback() -> callback, tracked_times
 
-Creates a callback that tracks the CPU time during a solve.  
+Creates a callback that tracks the CPU time during a solve.  Use `process_tracked_time(tracked_times)` function to extract `model_time` and `cpu_time`
+
+# Example
+```julia
+using ModelingToolkitTolerances: get_tracked_time_callback, process_tracked_time
+callback, tracked_times = get_tracked_time_callback()
+sol = solve(prob, args...; callback, kwargs...)
+cpu_timing = process_tracked_time(tracked_times)
+plot(cpu_timing)
+```
 """
 function get_tracked_time_callback()
     tracked_times = Vector{Float64}[]
@@ -252,15 +273,25 @@ function get_tracked_time_callback()
         nothing
     end 
 
-    callback = FunctionCallingCallback(track_time)  
+    callback = FunctionCallingCallback(track_time; func_start=false)  
     return callback, tracked_times
 end
 
+struct CPUTiming
+    model_time::Vector{Float64}
+    cpu_time::Vector{Float64}
+end
+
+"""
+    process_tracked_time(tracked_times::Vector{Vector{Float64}}) -> model_time, cpu_time
+
+See `get_tracked_time_callback()` for more information
+"""
 function process_tracked_time(tracked_times::Vector{Vector{Float64}})
     ys = hcat(tracked_times...)
     model_time = ys[1,:]
     cpu_time = [0; diff(ys[2,:])]/1e9
-    return model_time, cpu_time
+    return CPUTiming(model_time, cpu_time)
 end
 
 """
@@ -277,8 +308,8 @@ function DiffEqBase.solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Boo
     if track_cpu_time
         callback, tracked_times = get_tracked_time_callback()
         sol = solve(prob, args...; callback, kwargs...)
-        model_time, cpu_time = process_tracked_time(tracked_times)
-        return sol, model_time, cpu_time
+        cpu_timing = process_tracked_time(tracked_times)
+        return sol, cpu_timing
     else
         return solve(prob, args...; kwargs...)
     end
