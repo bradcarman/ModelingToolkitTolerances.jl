@@ -1,7 +1,7 @@
 module PlotsExt
     using Plots
     using ModelingToolkitTolerances
-    using ModelingToolkitTolerances: ResidualInfo, ResidualSettings, SUMMARY
+    using ModelingToolkitTolerances: ResidualInfo, ResidualSettings, SUMMARY, CPUTiming
     using FilterHelpers
     using LinearAlgebra
     using SciMLBase
@@ -145,13 +145,18 @@ module PlotsExt
     function ModelingToolkitTolerances.work_precision!(p::Plots.Plot, infos::Vector{ResidualInfo})
         residuals = map(x->maximum(x.residuals), infos)
         timings = map(x->x.timing, infos)
+
         
-        data = [residuals timings]
+
+        labels = map(x->Plots.text(" a$(-round(Int,log10(x.abstol))),r$(-round(Int,log10(x.reltol)))", 8, :left, :bottom), infos)
+        
+        data = [residuals timings labels]
         data = filter(x->!isnan(x[1]), eachrow(data))
         data = sort(data; by=first)
         data = hcat(data...)
 
-        return Plots.plot!(p, data[1,:], data[2,:]; marker=:dot, xlabel="max residual", ylabel="time [s]", xscale=:log10, yscale=:log10)
+        Plots.plot!(p, data[1,:], data[2,:]; marker=:dot, xlabel="max residual", ylabel="time [s]", xscale=:log10, yscale=:log10, label=nothing)
+        Plots.annotate!(p, data[1,:], data[2,:], data[3,:])
     end
 
     
@@ -200,6 +205,13 @@ module PlotsExt
         end
         
         return p
+    end
+
+    function Plots.plot(cpu_timing::CPUTiming; show_cumalative=true)
+        plot(cpu_timing.model_time, cpu_timing.cpu_time; xlabel="model time [s]", ylabel="cpu time [s]",label=nothing)
+        if show_cumalative
+            plot!(twinx(), cpu_timing.model_time, cumsum(cpu_timing.cpu_time); ylabel="cumalative cpu time [s]", label=nothing, color=:red, ytickfontcolor=:red, yforeground_color_axis=:red, yguidefontcolor=:red, yforeground_color_border=:red)
+        end
     end
 
 end

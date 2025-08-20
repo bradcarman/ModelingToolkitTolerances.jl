@@ -59,5 +59,5 @@ new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
 
 
 # wall time checker
-@time sol, model_time, cpu_time = solve(prob, true, Tsit5());
-plot(model_time, cpu_time; xlabel="model time [s]", ylabel="cpu time [s]")
+@time sol, cpu_timing = solve(prob, true, Tsit5());
+@test cpu_timing isa ModelingToolkitTolerances.CPUTiming

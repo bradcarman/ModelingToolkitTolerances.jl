@@ -24,12 +24,6 @@ using ModelingToolkitTolerances
 plot(sol, true; idxs=x) # residual limit defaults to 1.0
 ```
 
-Adjusting the residual limit gives...
-
-```julia
-plot(sol, 0.5; idxs=x) # residual limit set to 0.5
-```
-
 ## Numerically
 To get the residual information directly we can use the function `residual(sol::ODESolution)`...
 
@@ -49,9 +43,8 @@ When using models in an algrithm, say in a loss function for example, it's a goo
 
 ```julia
 residual_limit = 0.1
-accept_result = (sol.retcode == ReturnCode.Success) & (r < residual_limit)
+accept_result = (sol.retcode == ReturnCode.Success) && (maximum(norm(residual(sol))) < residual_limit)
 ```
-
 
 If we decrease the step size we should get a better result.  Now we see an acceptable result...
 
@@ -140,11 +133,20 @@ As can be seen we now get the expected smooth solution to a constant pressure.
 We can also get a work precision plot based on the calculated residual.
 
 ```julia
-using ModelingToolkitTolerances: work_precision
 work_precision(resids)
 ```
 
-# Advanced Use
+Here we can see that the point labeled "a6,r12" gives the optimal result, with a minimal residual and a very fast solve time to go with it.  Note the label represents the abstol and the reltol exponents, respectively.  Therefore, "a6,r12" is translated to "abstol=1e-6, reltol=1e-12".
+
+## CPU Timing
+Often areas of high error will also experience higher compute time.  It's also possible to gather this information by adding `true` as the 2nd positional argument to `solve`, for example
+
+```julia
+sol, cpu_timing = solve(prob, true, Rodas5P());
+plot(cpu_timing)
+```
+
+## Advanced Use
 Note that we have used `@mtkbuild` which runs `structural_simplify()` on the model and reduces the 20 equation system down to 1 equation.  So what if we wanted to see the residual of each of those equations individually?  This might help us determine which equation is causing the model to struggle.  To do this we will use the function `no_simplify()`...
 
 ```julia
@@ -155,20 +157,15 @@ sys = no_simplify(sys)
 
 st = unknowns(sys)
 u0 = st .=> sol(0.0; idxs=st) # <-- create initialization from previous solution
-prob = ODEProblem(sys, u0, (0, 1))
+prob = ODEProblem(sys, u0, (0, 1); build_initializeprob=false)
 sol = solve(prob, Rodas5P()) # <-- using default abstol & reltol
-Plots.plot(sol; idxs=sys.vol₊port₊p)
+Plots.plot(sol, 0.05; idxs=sys.vol₊port₊p)
 Plots.scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
 ```
 
-Here we get a very interesting solution, the adaptive time stepping is working more as expected with default tolerance.  Therefore this shows us that `structural_simplify()` is greatly influencing the solution.  Let's take a look at the residual...
+Here we get a very interesting solution, the adaptive time stepping is working more as expected with default tolerance.  Therefore this shows us that `structural_simplify()` is greatly influencing the solution.  
 
-```julia
-resid = residual(sol, 0:0.01:1)
-plot(resid)
-```
-
-What we see here is the combined residual of all 20 equations.  If we want to look at the algebraic vs. differential equations, we can do the following...
+The residual view has also been added to the plot (with the 2nd positional argument for resdiual scale, 0.05).  What we see here is the combined residual of all 20 equations.  As can be seen the result is much better now, with some increase in residual around the transitions.  If we want to look at the algebraic vs. differential equations, we can do the following...
 
 ```julia
 using ModelingToolkitTolerances: ALGEBRAIC, DIFFERENTIAL
@@ -215,7 +212,7 @@ sol = solve(prob, Tsit5())
 plot(sol; idxs=T)
 ```
 
-We are plotting the temperature, which should be smoothly cooling from 301K to 300K and reaching steady state.  But something in the numerical solution goes wrong and the temperature becomes unstable.  In this case we clearly have a measurable residual error in the solved equation.  The residual error is calculated simply as:
+We are plotting the temperature, which should be smoothly cooling from 301K to 300K and reaching steady state.  But something in the numerical solution goes wrong and the temperature becomes unstable.  In this case we clearly have a measurable residual error in the solved equation.  The residual is calculated by simply taking the left hand side of the equation subtracted from the right hand side:
 
 ```julia; eval=false
 res = ( (h * A)/(m * c_p) * (T_inf - T) ) - ( D(T) )
