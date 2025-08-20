@@ -264,12 +264,28 @@ cpu_timing = process_tracked_time(tracked_times)
 plot(cpu_timing)
 ```
 """
-function get_tracked_time_callback()
+function get_tracked_time_callback(; tspan=nothing)
     tracked_times = Vector{Float64}[]
+    pb = if !isnothing(tspan)
+        n = 1000
+        Δt = tspan[2] - tspan[1]
+        dt = Δt/(n-1)
+        last_i = -1
+        t->begin 
+            i = round(Int, (t-tspan[1])/dt )
+            if i > last_i
+                progressbar(i, n)
+                last_i = i
+            end
+        end
+    else
+        t->nothing
+    end
 
     track_time(u, t, integrator) = begin
         current_time = Base.time_ns()
         push!(tracked_times, [t, current_time])
+        pb(t)
         nothing
     end 
 
@@ -301,18 +317,38 @@ Returns the `sol::ODESolution` along with corresponding CPU timing information:
 - `model_time::Vector{Float64}`: evaluation times of the model 
 - `cpu_time::Vector{Float64}`: corresponding CPU run time at each `model_time` point
 """
-function DiffEqBase.solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; callback = nothing, kwargs...)
+function DiffEqBase.solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; callback = nothing, console_progress=false, kwargs...)
 
     !isnothing(callback) && error("Can't use with other callbacks directly.  Use `get_tracked_time_callback()`` to provide a `CallbackSet` with required callbacks")
     
     if track_cpu_time
-        callback, tracked_times = get_tracked_time_callback()
+        tspan = if console_progress
+            prob.tspan
+        else
+            nothing
+        end
+        callback, tracked_times = get_tracked_time_callback(;tspan)
         sol = solve(prob, args...; callback, kwargs...)
         cpu_timing = process_tracked_time(tracked_times)
         return sol, cpu_timing
     else
         return solve(prob, args...; kwargs...)
     end
+end
+
+function progressbar(i::Int, n::Int)
+
+  divs = 50
+  inc = n / divs 
+  
+  if inc > 1
+      if mod(i, round(inc)) == 0
+          print(":")
+      end
+  else
+      print(":"^Int(round(1 / inc)))
+  end
+
 end
 
 
