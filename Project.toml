@@ -1,7 +1,7 @@
 name = "ModelingToolkitTolerances"
 uuid = "cca81fe9-e5fd-44f6-ad29-5b4f39e14206"
 authors = ["Brad Carman <bradleygcarman@gmail.com>"]
-version = "0.6.0"
+version = "0.6.1"
 
 [deps]
 DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"
@@ -22,7 +22,7 @@ PlotsExt = "Plots"
 
 [compat]
 DiffEqBase = "6"
-DiffEqCallbacks = "4.9.0"
+DiffEqCallbacks = "4"
 FilterHelpers = "0.2.0"
 ForwardDiff = "0.10"
 LinearAlgebra = "1"
