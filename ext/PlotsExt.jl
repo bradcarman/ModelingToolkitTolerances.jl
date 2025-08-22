@@ -6,8 +6,8 @@ module PlotsExt
     using LinearAlgebra
     using SciMLBase
 
-    function Plots.plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY)
-        p = Plots.plot(xlabel="time [s]", ylabel="residual")
+    function Plots.plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY; yscale=:log10, kwargs...)
+        p = Plots.plot(;xlabel="time [s]", ylabel="residual", yscale, kwargs...)
 
         differential_vars = if settings.differential isa Bool
             if settings.differential
@@ -72,7 +72,7 @@ module PlotsExt
     superscript(n::Integer) = join(SUPERSCRIPT_DIGITS[begin .+ reverse(digits(n))])
     subscript(n::Integer)   = join(SUBSCRIPT_DIGITS[begin .+ reverse(digits(n))])
 
-    function Plots.plot(infos::Vector{ResidualInfo}; summary=maximum, leg=:bottomright)
+    function Plots.plot(infos::Vector{ResidualInfo}; summary=maximum, leg=:bottomright, kwargs...)
 
         # defaults
         # abstol = 1e-6
@@ -82,7 +82,7 @@ module PlotsExt
         reltols = map(x->x.reltol, infos) |> unique
 
         # xtick_labels = "10^" .* string.(round.(Int,log10.(reltols)))
-        p= Plots.plot(; ylabel="max residual", xlabel="reltol", xscale=:log10, yscale=:log10, leg, xticks=reltols)
+        p= Plots.plot(; ylabel="max residual", xlabel="reltol", xscale=:log10, yscale=:log10, leg, xticks=reltols, kwargs...)
         for abstol in abstols
 
             resids = filter(x->x.abstol==abstol, infos)
@@ -136,13 +136,13 @@ module PlotsExt
     # end
 
 
-    function ModelingToolkitTolerances.work_precision(infos::Vector{ResidualInfo})
+    function ModelingToolkitTolerances.work_precision(infos::Vector{ResidualInfo}; label=nothing, kwargs...)
         p = Plots.plot()
-        return ModelingToolkitTolerances.work_precision!(p, infos)
+        return ModelingToolkitTolerances.work_precision!(p, infos; label, kwargs...)
     end
 
 
-    function ModelingToolkitTolerances.work_precision!(p::Plots.Plot, infos::Vector{ResidualInfo})
+    function ModelingToolkitTolerances.work_precision!(p::Plots.Plot, infos::Vector{ResidualInfo}; label=nothing, kwargs...)
         residuals = map(x->maximum(x.residuals), infos)
         timings = map(x->x.timing, infos)
 
@@ -155,7 +155,7 @@ module PlotsExt
         data = sort(data; by=first)
         data = hcat(data...)
 
-        Plots.plot!(p, data[1,:], data[2,:]; marker=:dot, xlabel="max residual", ylabel="time [s]", xscale=:log10, yscale=:log10, label=nothing)
+        Plots.plot!(p, data[1,:], data[2,:]; marker=:dot, xlabel="max residual", ylabel="time [s]", xscale=:log10, yscale=:log10, label, kwargs...)
         Plots.annotate!(p, data[1,:], data[2,:], data[3,:])
     end
 
@@ -207,8 +207,8 @@ module PlotsExt
         return p
     end
 
-    function Plots.plot(cpu_timing::CPUTiming; show_cumalative=true)
-        plot(cpu_timing.model_time, cpu_timing.cpu_time; xlabel="model time [s]", ylabel="cpu time [s]",label=nothing)
+    function Plots.plot(cpu_timing::CPUTiming; show_cumalative=true, label=nothing, kwargs...)
+        plot(cpu_timing.model_time, cpu_timing.cpu_time; xlabel="model time [s]", ylabel="cpu time [s]", label, kwargs...)
         if show_cumalative
             plot!(twinx(), cpu_timing.model_time, cumsum(cpu_timing.cpu_time); ylabel="cumalative cpu time [s]", label=nothing, color=:red, ytickfontcolor=:red, yforeground_color_axis=:red, yguidefontcolor=:red, yforeground_color_border=:red)
         end

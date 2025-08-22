@@ -8,12 +8,14 @@ using PrettyTables
 using DiffEqBase
 using DiffEqCallbacks
 
-export residual, analysis, work_precision
+export residual, analysis, work_precision, work_precision!
 
 struct ResidualInfo
     differential_vars::Vector{Int}
     algebraic_vars::Vector{Int}
     residuals::Matrix{Float64}
+    rhs::Matrix{Float64}
+    lhs::Matrix{Float64}
     t::Vector{Float64}
     abstol::Float64
     reltol::Float64
@@ -39,6 +41,7 @@ function default_range(sol::ODESolution)
     return range(sol.t[1], sol.t[end], n)
 end
 
+
 """
     residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
 
@@ -49,58 +52,53 @@ Keyword Arguments (used by `analysis() function`):
 - `reltol`: same as above, but for `reltol`
 - `timing`: this records the corresponding solution time reference.  Used by `analysis()` function.
 """
-function residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
-    #NOTE: we re-create the ODEProblem so we have the full f function (this seems to be dropped from the ODESolution)
-    # prob = ODEProblem(sol.prob.f.sys, sol(0.0), (tms[1], tms[end]); build_initializeprob=false)
-    # f = prob.f
-    #f_oop = f.f_oop
-
-    # function f_oop(u, p, t) 
-    #     du = similar(u)
-    #     f(du, u, p, t)
-    #     return du
-    # end
-
+function residual(sol::ODESolution, tms = default_range(sol); abstol=NaN, reltol=NaN, timing=NaN)
     prob = sol.prob
     f = prob.f
-    p = prob.p
     sys = f.sys
-    eqs = full_equations(sys)
-    ps = parameters(sys)
-    sts = unknowns(sys)
-    # st_vals = [st => sol(tms; idxs=st).u for st in sts]
-    # p_vals = [p => sol(0.0; idxs=p) for p in ps]
+    eqs = equations(sys)
     n = length(tms)
-
+    m = length(eqs)
+        
+    
     differential_vars = Int[]
     algebraic_vars = Int[]
-    residuals = Vector{Float64}[]
-    # rhs_data = hcat([f_oop(sol(tm), p, tm) for tm in tms]...)
-
-
-    for (i,eq) in enumerate(eqs)
-
-        lhs = eq.lhs
-        rhs = eq.rhs
-        lhs_data = if ModelingToolkit.isdifferential(lhs)
-            push!(differential_vars, i)
-            differential_var = lhs.arguments[1]
-            df(time) = ForwardDiff.derivative( ξ -> sol(ξ, idxs=differential_var), time)
-            df.(tms)
-        else
-            push!(algebraic_vars, i)
-            zero.(tms)
-        end
-        
-        rhs_data = sol(tms; idxs=rhs)
-
-        residual = rhs_data .- lhs_data
-
-        push!(residuals, residual)
-    end
+    ders = Num[]
 
     
-    return ResidualInfo(differential_vars, algebraic_vars, hcat(residuals...), tms, abstol, reltol, timing)
+    task_rhs = Threads.@spawn begin
+        rhss = [eq.rhs for eq in eqs]
+        rhss_data = hcat(sol(tms, idxs=rhss).u...)'    
+    end
+        
+    task_lhs = Threads.@spawn begin
+        lhss_data = zeros(n,m)
+        for (i,eq) in enumerate(eqs)
+            lhs = eq.lhs
+            
+            if ModelingToolkit.isdifferential(lhs)
+                push!(differential_vars, i)
+                differential_var = lhs.arguments[1]
+                push!(ders, differential_var)
+            else
+                push!(algebraic_vars, i)
+            end
+        end
+
+        fs = time -> sol(time; idxs=ders)
+        dfs = time -> ForwardDiff.derivative(fs, time)
+        for (i,t) in enumerate(tms)
+            lhss_data[i,:] = dfs(t)
+        end    
+        lhss_data
+    end   
+    
+    rhss_data = fetch(task_rhs)
+    lhss_data = fetch(task_lhs)
+
+    residuals = rhss_data .- lhss_data
+    
+    return ResidualInfo(differential_vars, algebraic_vars, residuals, rhss_data, lhss_data, tms, abstol, reltol, timing)
 end
 
 function LinearAlgebra.norm(info::ResidualInfo, vars = vcat(info.algebraic_vars, info.differential_vars))
@@ -117,7 +115,7 @@ end
 """
     analysis(prob::ODEProblem, solver, tms = collect(prob.tspan[1]:1e-3:prob.tspan[2]); kwargs...)
 
-Runs a 3 x 3 study of `abstol` and `reltol` = [1e-3, 1e-6, 1e-9].  Returns a `Vector{ResidualInfo}` which can be sent to `plot()` and `work_precision()` functions for visual analysis.  A `solver` from `OrdinaryDiffEq` must be passed as the 2nd argument.  The time points used for residual calculation are provided by `tms` and default to the `prob.tspan` spaced by 1ms.  Provided `kwargs...` are passed to the solve
+Runs a 3 x 4 study of `abstol` = [1e-3, 1e-6, 1e-9] and `reltol` = [1e-3, 1e-6, 1e-9, 1e-12].  Returns a `Vector{ResidualInfo}` which can be sent to `plot()` and `work_precision()` functions for visual analysis.  A `solver` from `OrdinaryDiffEq` must be passed as the 2nd argument.  The time points used for residual calculation are provided by `tms` and default to the `prob.tspan` spaced by 1ms.  Provided `kwargs...` are passed to the solve
 
 
 """
@@ -128,6 +126,7 @@ function analysis(prob::ODEProblem, solver, tms = range(prob.tspan[1], prob.tspa
         for (j,reltol) in enumerate(reltols)
             # solve(prob, solver; abstol, reltol, kwargs...)
             timing = @timed sol = solve(prob, solver; abstol, reltol, kwargs...)
+            println(":: [$(round(Int,100*((i-1)*4+j)/12))%] analysis step: abstol=$abstol, reltol=$reltol")
             if sol.retcode == ReturnCode.Success
                 res = residual(sol, tms; abstol, reltol, timing = timing.time) #TODO: does timing.time include the compile time?
                 push!(residuals, res)
@@ -315,5 +314,50 @@ function DiffEqBase.solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Boo
     end
 end
 
-
 end # module ModelingToolkitTolerances
+
+
+#=
+old slower version...
+function residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
+    
+    prob = sol.prob
+    f = prob.f
+    sys = f.sys
+    eqs = equations(sys)
+    
+    differential_vars = Int[]
+    algebraic_vars = Int[]
+    
+
+    # @info "Collecting RHS data..."
+    rhss = [eq.rhs for eq in eqs]
+    rhss_data = hcat(sol(tms; idxs=rhss).u...)'
+    
+    lhss_data = similar(rhss_data)
+    ders = Num[]
+    # @info "Collecting LHS data..."
+    for (i,eq) in enumerate(eqs)
+
+        lhs = eq.lhs
+        rhs = eq.rhs
+
+        lhs_data = if ModelingToolkit.isdifferential(lhs)
+            push!(differential_vars, i)
+            differential_var = lhs.arguments[1]
+            fs = time -> sol(time; idxs=differential_var)
+            dfs = time -> ForwardDiff.derivative(fs, time)
+            dfs.(tms)
+        else
+            push!(algebraic_vars, i)
+            zero.(tms)
+        end
+
+        lhss_data[:,i] = lhs_data
+    end
+
+    residuals = rhss_data .- lhss_data
+    
+    return ResidualInfo(differential_vars, algebraic_vars, residuals, rhss_data, lhss_data, tms, abstol, reltol, timing)
+end
+=#
