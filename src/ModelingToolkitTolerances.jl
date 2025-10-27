@@ -88,7 +88,7 @@ function residual(sol::ODESolution, tms = default_range(sol); abstol=NaN, reltol
         fs = time -> sol(time; idxs=ders)
         dfs = time -> ForwardDiff.derivative(fs, time)
         for (i,t) in enumerate(tms)
-            lhss_data[i,:] = dfs(t)
+            lhss_data[i,differential_vars] = dfs(t)
         end    
         lhss_data
     end   
