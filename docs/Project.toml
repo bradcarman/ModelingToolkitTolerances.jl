@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ModelingToolkitTolerances = "cca81fe9-e5fd-44f6-ad29-5b4f39e14206"
+
+[compat]
+Documenter = "1"

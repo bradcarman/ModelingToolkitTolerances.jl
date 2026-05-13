@@ -100,7 +100,7 @@ module PlotsExt
 
         r = filtersingle(x->(x.abstol == 1e-6) & (x.reltol == 1e-3), infos)
         if !isnothing(r)
-            Plots.scatter!(p, [1e-3], [summary(r.residuals)]; label="default (abs,rel) = (10⁻⁶, 10⁻³)", marker=:star, markersize=10)
+            Plots.scatter!(p, [1e-3], [summary(LinearAlgebra.norm(r))]; label="default (abs,rel) = (10⁻⁶, 10⁻³)", marker=:star, markersize=10)
         end
 
         return p

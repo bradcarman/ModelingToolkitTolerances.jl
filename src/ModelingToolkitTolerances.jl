@@ -68,6 +68,7 @@ function residual(sol::ODESolution, tms = default_range(sol); abstol=NaN, reltol
     
     task_rhs = Threads.@spawn begin
         rhss = [eq.rhs for eq in eqs]
+        #TODO: improve the hcat call
         rhss_data = hcat(sol(tms, idxs=rhss).u...)'    
     end
         
@@ -78,7 +79,11 @@ function residual(sol::ODESolution, tms = default_range(sol); abstol=NaN, reltol
             
             if ModelingToolkit.isdifferential(lhs)
                 push!(differential_vars, i)
-                differential_var = lhs.arguments[1]
+                # ModelingToolkit v9 & v10
+                # differential_var = lhs.arguments[1]
+
+                # ModelingToolkit v11
+                differential_var = lhs.args[1]
                 push!(ders, differential_var)
             else
                 push!(algebraic_vars, i)
@@ -198,9 +203,9 @@ end
 
 function show_summary(io, infos::Vector{ResidualInfo}; kwargs...)
     
-    header = ["abstol"]
+    column_labels = ["abstol"]
     for reltol in reltols
-        push!(header, "reltol = $reltol")
+        push!(column_labels, "reltol = $reltol")
     end
     
     residuals = map(LinearAlgebra.norm, infos)
@@ -243,7 +248,7 @@ function show_summary(io, infos::Vector{ResidualInfo}; kwargs...)
         push!(cols, col)
     end
 
-    pretty_table(io, hcat(abstols, cols...); header, title="Summary of Max Residuals", crop=:none, kwargs...)
+    pretty_table(io, hcat(abstols, cols...); column_labels, title="Summary of Max Residuals", fit_table_in_display_horizontally = false, fit_table_in_display_vertically = false, kwargs...)
 end
 
 
