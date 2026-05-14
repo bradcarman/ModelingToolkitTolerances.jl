@@ -8,7 +8,8 @@ using PrettyTables
 using DiffEqBase
 using DiffEqCallbacks
 
-export residual, analysis, work_precision, work_precision!
+export residual, analysis, work_precision, work_precision!, plot_with_residual, plot_with_residual!, solve_with_cpu_time
+
 
 struct ResidualInfo
     differential_vars::Vector{Int}
@@ -144,26 +145,31 @@ end
 
 function work_precision end
 function work_precision! end
+function plot_with_residual end
+function plot_with_residual! end
 
 function no_simplify(sys::System)
-
     expanded_sys = expand_connections(sys)
     eqs = equations(expanded_sys)
     vars = unknowns(expanded_sys)
     pars = parameters(expanded_sys)
     ivs = ModelingToolkit.independent_variables(expanded_sys)
-    @assert length(ivs) == 1 "Only systems with 1 independent variable is supported"
+    @assert length(ivs) == 1 "Only systems with 1 independent variable are supported"
     iv = ivs[1]
-    defs = ModelingToolkit.defaults(expanded_sys)
+    
+    # defaults() is deprecated in v11. It is now split into initial_conditions and bindings.
+    ics = ModelingToolkit.initial_conditions(expanded_sys)
+    bnds = ModelingToolkit.bindings(expanded_sys)
 
     eqs_ = Equation[]
     for eq in eqs
-        
         if ModelingToolkit.is_diff_equation(eq)
             new_eq = move_differentials_to_lhs(eq)
             push!(eqs_, new_eq)
 
-        elseif typeof(eq.lhs) != ModelingToolkit.Connection && !ModelingToolkit._iszero(eq.lhs) && !ModelingToolkit.isdifferential(eq.lhs)
+        # Removed the `typeof(eq.lhs) != ModelingToolkit.Connection` check. 
+        # v11 expands connections to standard equations, and the Connection type is removed.
+        elseif !ModelingToolkit._iszero(eq.lhs) && !ModelingToolkit.isdifferential(eq.lhs)
             push!(eqs_, 0 ~ eq.rhs - eq.lhs)
             
         else
@@ -171,7 +177,8 @@ function no_simplify(sys::System)
         end
     end
 
-    system = System(eqs_, iv, vars, pars; name=ModelingToolkit.get_name(expanded_sys), defaults=defs)
+    # Pass the separated initial_conditions and bindings explicitly
+    system = System(eqs_, iv, vars, pars; name = ModelingToolkit.get_name(expanded_sys), initial_conditions = ics, bindings = bnds)
 
     return complete(system)
 end
@@ -179,7 +186,7 @@ end
 function move_differentials_to_lhs(eq)
     trms = union(terms(eq.rhs), terms(eq.lhs))
 
-    dtrms = SymbolicUtils.BasicSymbolic{Real}[]
+    dtrms = SymbolicUtils.BasicSymbolic[]
 
     for e in [eq.lhs, eq.rhs]
         x = Symbolics.filterchildren(Symbolics.is_derivative, e)
@@ -299,24 +306,31 @@ function process_tracked_time(tracked_times::Vector{Vector{Float64}})
 end
 
 """
-    solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; callback = nothing, kwargs...) -> sol, model_time, cpu_time
+    solve_with_cpu_time(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; callback = nothing, kwargs...) -> sol, model_time, cpu_time
 
 Returns the `sol::ODESolution` along with corresponding CPU timing information: 
 - `model_time::Vector{Float64}`: evaluation times of the model 
 - `cpu_time::Vector{Float64}`: corresponding CPU run time at each `model_time` point
 """
-function DiffEqBase.solve(prob::SciMLBase.AbstractDEProblem, track_cpu_time::Bool, args...; callback = nothing, kwargs...)
-
-    !isnothing(callback) && error("Can't use with other callbacks directly.  Use `get_tracked_time_callback()`` to provide a `CallbackSet` with required callbacks")
+function solve_with_cpu_time(prob::SciMLBase.AbstractDEProblem, args...; kwargs...)
     
-    if track_cpu_time
-        callback, tracked_times = get_tracked_time_callback()
-        sol = solve(prob, args...; callback, kwargs...)
-        cpu_timing = process_tracked_time(tracked_times)
-        return sol, cpu_timing
+    time_cb, tracked_times = get_tracked_time_callback()
+    
+    kwargs_dict = Dict{Symbol, Any}(kwargs)
+    if haskey(kwargs_dict, :callback) && !isnothing(kwargs_dict[:callback])
+        # Use CallbackSet to combine the user's callback(s) with yours
+        user_cb = kwargs_dict[:callback]
+        combined_cb = CallbackSet(user_cb, time_cb)
+        kwargs_dict[:callback] = combined_cb
     else
-        return solve(prob, args...; kwargs...)
+        kwargs_dict[:callback] = time_cb
     end
+    
+    sol = solve(prob, args...; kwargs_dict...)
+    
+    cpu_timing = process_tracked_time(tracked_times)
+    
+    return (sol = sol, cpu_timing = cpu_timing)
 end
 
 end # module ModelingToolkitTolerances

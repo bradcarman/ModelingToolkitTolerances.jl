@@ -3,6 +3,9 @@ uuid = "cca81fe9-e5fd-44f6-ad29-5b4f39e14206"
 authors = ["Brad Carman <bradleygcarman@gmail.com>"]
 version = "0.7.2"
 
+[workspace]
+projects = ["examples", "docs"]
+
 [deps]
 DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"
 DiffEqCallbacks = "459566f4-90b8-5000-8ac3-15dfb0a30def"

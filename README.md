@@ -7,7 +7,7 @@ Furethermore, in some cases it's sometimes obvious if a model solution was good 
 Take the following simple ODE of $x′ = x/4$.  If we use the `Euler` method with a large step size, we know that this will provide a low quality solution.  Let's take a look at the solution with a step size of 2s.
 
 ```julia
-using ModelingToolkit, OrdinaryDiffEq, Plots
+using ModelingToolkit, OrdinaryDiffEq, OrdinaryDiffEqLowOrderRK, Plots
 using ModelingToolkit: D_nounits as D, t_nounits as t
 vars = @variables x(t)=1
 eq = D(x) ~ x/4
@@ -25,7 +25,7 @@ Without the analytical solution, we don't know how to quantify the error.  With 
 
 ```julia
 using ModelingToolkitTolerances
-plot(sol, true; idxs=x) # residual limit defaults to 1.0
+plot_with_residual(sol; idxs=x) # residual limit defaults to 1.0
 ```
 
 ![](figures/README_2_1.png)
@@ -37,7 +37,7 @@ To get the residual information directly we can use the function `residual(sol::
 
 ```julia
 res = residual(sol)
-plot(res)
+plot(res; yscale=:identity)
 ```
 
 ![](figures/README_3_1.png)
@@ -81,7 +81,7 @@ sol = solve(prob, Euler(); dt=0.1, adaptive=false)
 res = residual(sol)
 r = maximum(norm(res)) # 0.05
 accept_result = (sol.retcode == ReturnCode.Success) & (r < residual_limit) # true
-plot(sol, true; idxs=x)
+plot_with_residual(sol; idxs=x)
 ```
 
 ![](figures/README_6_1.png)
@@ -106,7 +106,6 @@ import ModelingToolkitStandardLibrary.Blocks as B
 using Plots
 
 function ValveVolume(; name)
-
     pars = []
 
     systems = @named begin
@@ -141,7 +140,7 @@ What we see here is a very strange solution which seems to be unstable.  Clearly
 ```julia
 using ModelingToolkitTolerances
 resid = residual(sol, 0:0.01:5)
-plot(resid)
+plot(resid; yscale=:identity)
 ```
 
 ![](figures/README_8_1.png)
@@ -155,12 +154,24 @@ resids = analysis(prob, Rodas5P())
 ```
 
 ```
-Summary of Max Residuals
+:: [8%] analysis step: abstol=0.001, reltol=0.001
+:: [17%] analysis step: abstol=0.001, reltol=1.0e-6
+:: [25%] analysis step: abstol=0.001, reltol=1.0e-9
+:: [33%] analysis step: abstol=0.001, reltol=1.0e-12
+:: [42%] analysis step: abstol=1.0e-6, reltol=0.001
+:: [50%] analysis step: abstol=1.0e-6, reltol=1.0e-6
+:: [58%] analysis step: abstol=1.0e-6, reltol=1.0e-9
+:: [67%] analysis step: abstol=1.0e-6, reltol=1.0e-12
+:: [75%] analysis step: abstol=1.0e-9, reltol=0.001
+:: [83%] analysis step: abstol=1.0e-9, reltol=1.0e-6
+:: [92%] analysis step: abstol=1.0e-9, reltol=1.0e-9
+:: [100%] analysis step: abstol=1.0e-9, reltol=1.0e-12
+                             Summary of Max Residuals
 ┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
 │ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
 ├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
-│  0.001 │           12.2 │           0.981 │           0.542 │            0.543 │
-│ 1.0e-6 │           12.2 │            1.05 │          0.0401 │      * 3.52e-5 * │
+│  0.001 │           26.6 │            1.05 │           0.395 │            0.364 │
+│ 1.0e-6 │           23.6 │           0.757 │         0.00229 │      * 3.21e-5 * │
 │ 1.0e-9 │            N/A │             N/A │             N/A │              N/A │
 └────────┴────────────────┴─────────────────┴─────────────────┴──────────────────┘
 ```
@@ -183,8 +194,8 @@ see the new result.
 
 ```julia
 sol = solve(prob, Rodas5P(); abstol=1e-6, reltol=1e-9)
-Plots.plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
-Plots.scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
+plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
+scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
 ```
 
 ![](figures/README_11_1.png)
@@ -210,7 +221,7 @@ Here we can see that the point labeled "a6,r12" gives the optimal result, with a
 Often areas of high error will also experience higher compute time.  It's also possible to gather this information by adding `true` as the 2nd positional argument to `solve`, for example
 
 ```julia
-sol, cpu_timing = solve(prob, true, Rodas5P());
+sol, cpu_timing = solve_with_cpu_time(prob, Rodas5P());
 plot(cpu_timing)
 ```
 
@@ -231,8 +242,8 @@ st = unknowns(sys)
 u0 = st .=> sol(0.0; idxs=st) # <-- create initialization from previous solution
 prob = ODEProblem(sys, u0, (0, 1); build_initializeprob=false)
 sol = solve(prob, Rodas5P()) # <-- using default abstol & reltol
-Plots.plot(sol, 0.05; idxs=sys.vol₊port₊p)
-Plots.scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
+plot_with_residual(sol; idxs=sys.vol₊port₊p, residual_limit=0.05)
+scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
 ```
 
 ![](figures/README_14_1.png)
@@ -246,7 +257,7 @@ The residual view has also been added to the plot (with the 2nd positional argum
 ```julia
 using ModelingToolkitTolerances: ALGEBRAIC, DIFFERENTIAL
 resid = residual(sol)
-p1 = plot(resid, ALGEBRAIC)
+p1 = plot(resid, ALGEBRAIC; yscale=:identity)
 p2 = plot(resid, DIFFERENTIAL)
 plot(p1,p2)
 ```
@@ -260,7 +271,7 @@ As can be seen, all but 1 of the equations are algebraic.  And we can see that r
 ```julia
 using ModelingToolkitTolerances: ResidualSettings
 
-plot(resid, ResidualSettings(9))
+plot(resid, ResidualSettings(9); yscale=:identity)
 ```
 
 ![](figures/README_16_1.png)
@@ -276,18 +287,18 @@ eqs[9]
 ```
 
 ```
-0 ~ -valve₊base₊port_a₊dm(t) + ifelse(valve₊base₊area(t) > valve₊base₊minim
-um_area, valve₊base₊area(t), valve₊base₊minimum_area)*ifelse(abs((200.0valv
-e₊base₊port_a₊ρ*(valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t))) / ifelse
-((valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t)) > 0, valve₊base₊Cd, valv
-e₊base₊Cd_reverse)) >= 1, 0.1(abs((200.0valve₊base₊port_a₊ρ*(valve₊base₊por
-t_a₊p(t) - valve₊base₊port_b₊p(t))) / ifelse((valve₊base₊port_a₊p(t) - valv
-e₊base₊port_b₊p(t)) > 0, valve₊base₊Cd, valve₊base₊Cd_reverse))^0.5)*sign((
-2valve₊base₊port_a₊ρ*(valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t))) / i
-felse((valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t)) > 0, valve₊base₊Cd,
- valve₊base₊Cd_reverse)), (20.0valve₊base₊port_a₊ρ*(valve₊base₊port_a₊p(t) 
-- valve₊base₊port_b₊p(t))) / ifelse((valve₊base₊port_a₊p(t) - valve₊base₊po
-rt_b₊p(t)) > 0, valve₊base₊Cd, valve₊base₊Cd_reverse))
+0 ~ -valve₊base₊port_a₊dm(t) + ifelse(valve₊base₊minimum_area < valve₊base₊
+area(t), valve₊base₊area(t), valve₊base₊minimum_area)*ifelse(abs((2valve₊ba
+se₊port_a₊ρ*(valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t))) / (0.01ifels
+e(0 < (valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t)), valve₊base₊Cd, val
+ve₊base₊Cd_reverse))) >= 1, 0.1(abs((2valve₊base₊port_a₊ρ*(valve₊base₊port_
+a₊p(t) - valve₊base₊port_b₊p(t))) / (0.01ifelse(0 < (valve₊base₊port_a₊p(t)
+ - valve₊base₊port_b₊p(t)), valve₊base₊Cd, valve₊base₊Cd_reverse)))^0.5)*si
+gn((2valve₊base₊port_a₊ρ*(valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t)))
+ / ifelse(0 < (valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t)), valve₊base
+₊Cd, valve₊base₊Cd_reverse)), (0.2valve₊base₊port_a₊ρ*(valve₊base₊port_a₊p(
+t) - valve₊base₊port_b₊p(t))) / (0.01ifelse(0 < (valve₊base₊port_a₊p(t) - v
+alve₊base₊port_b₊p(t)), valve₊base₊Cd, valve₊base₊Cd_reverse)))
 ```
 
 
@@ -372,7 +383,19 @@ resids = analysis(prob, Tsit5())
 ```
 
 ```
-Summary of Max Residuals
+:: [8%] analysis step: abstol=0.001, reltol=0.001
+:: [17%] analysis step: abstol=0.001, reltol=1.0e-6
+:: [25%] analysis step: abstol=0.001, reltol=1.0e-9
+:: [33%] analysis step: abstol=0.001, reltol=1.0e-12
+:: [42%] analysis step: abstol=1.0e-6, reltol=0.001
+:: [50%] analysis step: abstol=1.0e-6, reltol=1.0e-6
+:: [58%] analysis step: abstol=1.0e-6, reltol=1.0e-9
+:: [67%] analysis step: abstol=1.0e-6, reltol=1.0e-12
+:: [75%] analysis step: abstol=1.0e-9, reltol=0.001
+:: [83%] analysis step: abstol=1.0e-9, reltol=1.0e-6
+:: [92%] analysis step: abstol=1.0e-9, reltol=1.0e-9
+:: [100%] analysis step: abstol=1.0e-9, reltol=1.0e-12
+                             Summary of Max Residuals
 ┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
 │ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
 ├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
@@ -410,7 +433,7 @@ Using `saveat` can affect the quality of the `ForwardDiff.derivative` computed f
 
 # API
 
-```
+```julia
 residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
 ```
 
@@ -424,9 +447,9 @@ Keyword Arguments (used by `analysis() function`):
 
 
 
-```
+```julia
 analysis(prob::ODEProblem, solver, tms = collect(prob.tspan[1]:1e-3:prob.tspan[2]); kwargs...)
 ```
 
-Runs a 3 x 3 study of `abstol` and `reltol` = [1e-3, 1e-6, 1e-9].  Returns a `Vector{ResidualInfo}` which can be sent to `plot()` and `work_precision()` functions for visual analysis.  A `solver` from `OrdinaryDiffEq` must be passed as the 2nd argument.  The time points used for residual calculation are provided by `tms` and default to the `prob.tspan` spaced by 1ms.  Provided `kwargs...` are passed to the solve
+Runs a 3 x 4 study of `abstol` = [1e-3, 1e-6, 1e-9] and `reltol` = [1e-3, 1e-6, 1e-9, 1e-12].  Returns a `Vector{ResidualInfo}` which can be sent to `plot()` and `work_precision()` functions for visual analysis.  A `solver` from `OrdinaryDiffEq` must be passed as the 2nd argument.  The time points used for residual calculation are provided by `tms` and default to the `prob.tspan` spaced by 1ms.  Provided `kwargs...` are passed to the solve
 

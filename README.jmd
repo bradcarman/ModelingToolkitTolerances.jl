@@ -7,7 +7,7 @@ Furethermore, in some cases it's sometimes obvious if a model solution was good 
 Take the following simple ODE of $x′ = x/4$.  If we use the `Euler` method with a large step size, we know that this will provide a low quality solution.  Let's take a look at the solution with a step size of 2s.
 
 ```julia
-using ModelingToolkit, OrdinaryDiffEq, Plots
+using ModelingToolkit, OrdinaryDiffEq, OrdinaryDiffEqLowOrderRK, Plots
 using ModelingToolkit: D_nounits as D, t_nounits as t
 vars = @variables x(t)=1
 eq = D(x) ~ x/4
@@ -21,7 +21,7 @@ Without the analytical solution, we don't know how to quantify the error.  With 
 
 ```julia
 using ModelingToolkitTolerances
-plot(sol, true; idxs=x) # residual limit defaults to 1.0
+plot_with_residual(sol; idxs=x) # residual limit defaults to 1.0
 ```
 
 ## Numerically
@@ -29,7 +29,7 @@ To get the residual information directly we can use the function `residual(sol::
 
 ```julia
 res = residual(sol)
-plot(res)
+plot(res; yscale=:identity)
 ```
 
 We can convert this to a single number by taking the `maximum` of the `norm`.
@@ -53,7 +53,7 @@ sol = solve(prob, Euler(); dt=0.1, adaptive=false)
 res = residual(sol)
 r = maximum(norm(res)) # 0.05
 accept_result = (sol.retcode == ReturnCode.Success) & (r < residual_limit) # true
-plot(sol, true; idxs=x)
+plot_with_residual(sol; idxs=x)
 ```
 
 
@@ -104,7 +104,7 @@ What we see here is a very strange solution which seems to be unstable.  Clearly
 ```julia
 using ModelingToolkitTolerances
 resid = residual(sol, 0:0.01:5)
-plot(resid)
+plot(resid; yscale=:identity)
 ```
 
 As can be seen, the error or residual of the model is quite larger than 0.  A perfect solution (i.e. an analytical solution) to the problem would give a residual of 0.  We can see then that this solution, as expected, is not high quality.  So what should we do to get a better solution?  Let's use ModelingToolkitTolerances.jl to explore what we can do using the `analysis` function...
@@ -123,8 +123,8 @@ see the new result.
 
 ```julia
 sol = solve(prob, Rodas5P(); abstol=1e-6, reltol=1e-9)
-Plots.plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
-Plots.scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
+plot(sol; idxs=sys.vol.port.p, ylabel="pressure [Pa]")
+scatter!(sol.t, sol[sys.vol.port.p]; label="solution points")
 ```
 
 As can be seen we now get the expected smooth solution to a constant pressure.
@@ -142,7 +142,7 @@ Here we can see that the point labeled "a6,r12" gives the optimal result, with a
 Often areas of high error will also experience higher compute time.  It's also possible to gather this information by adding `true` as the 2nd positional argument to `solve`, for example
 
 ```julia
-sol, cpu_timing = solve(prob, true, Rodas5P());
+sol, cpu_timing = solve_with_cpu_time(prob, Rodas5P());
 plot(cpu_timing)
 ```
 
@@ -159,8 +159,8 @@ st = unknowns(sys)
 u0 = st .=> sol(0.0; idxs=st) # <-- create initialization from previous solution
 prob = ODEProblem(sys, u0, (0, 1); build_initializeprob=false)
 sol = solve(prob, Rodas5P()) # <-- using default abstol & reltol
-Plots.plot(sol, 0.05; idxs=sys.vol₊port₊p)
-Plots.scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
+plot_with_residual(sol; idxs=sys.vol₊port₊p, residual_limit=0.05)
+scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
 ```
 
 Here we get a very interesting solution, the adaptive time stepping is working more as expected with default tolerance.  Therefore this shows us that `structural_simplify()` is greatly influencing the solution.  
@@ -170,7 +170,7 @@ The residual view has also been added to the plot (with the 2nd positional argum
 ```julia
 using ModelingToolkitTolerances: ALGEBRAIC, DIFFERENTIAL
 resid = residual(sol)
-p1 = plot(resid, ALGEBRAIC)
+p1 = plot(resid, ALGEBRAIC; yscale=:identity)
 p2 = plot(resid, DIFFERENTIAL)
 plot(p1,p2)
 ```
@@ -180,7 +180,7 @@ As can be seen, all but 1 of the equations are algebraic.  And we can see that r
 ```julia
 using ModelingToolkitTolerances: ResidualSettings
 
-plot(resid, ResidualSettings(9))
+plot(resid, ResidualSettings(9); yscale=:identity)
 ```
 
 We can take a look at the equation...

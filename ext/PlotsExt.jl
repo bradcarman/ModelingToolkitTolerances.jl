@@ -159,50 +159,38 @@ module PlotsExt
         Plots.annotate!(p, data[1,:], data[2,:], data[3,:])
     end
 
-    
-    function Plots.plot(sol::ODESolution, residual_settings; idxs, kwargs...)
+    function ModelingToolkitTolerances.plot_with_residual(sol::ODESolution; idxs, residual_limit=1.0, kwargs...)
         p = Plots.plot(sol; idxs, kwargs...)
-        add_heatmap!(p, sol, residual_settings)
+        add_heatmap!(p, sol, residual_limit)
         return p
     end
 
-    function Plots.plot!(sol::ODESolution, residual_settings; idxs, kwargs...)
+    function ModelingToolkitTolerances.plot_with_residual!(sol::ODESolution; idxs, residual_limit=1.0, kwargs...)
         p = Plots.plot!(sol; idxs, kwargs...)
-        add_heatmap!(p, sol, residual_settings)
+        add_heatmap!(p, sol, residual_limit)
         return p
     end
 
-    function add_heatmap!(p, sol, residual_settings)
+    function add_heatmap!(p, sol, residual_limit=1.0)
 
-        show_res = false
-        residual_limit = 1.0
-        if residual_settings isa Bool
-            show_res = residual_settings
-        end
-
-        if residual_limit isa Real
-            residual_limit = residual_settings
-            show_res = residual_limit > 0
-        end
-
+       
         #TODO: handle additional settings
+        
+        res = residual(sol)
+        y_min, y_max = Plots.ylims(p)
 
-        if show_res
-            res = residual(sol)
-            y_min, y_max = Plots.ylims(p)
+        xs = res.t
+        ys = LinearAlgebra.norm(res)
 
-            xs = res.t
-            ys = LinearAlgebra.norm(res)
+        zs = zeros(2, length(xs))
+        zs[1,:] = ys
+        zs[2,:] = ys
 
-            zs = zeros(2, length(xs))
-            zs[1,:] = ys
-            zs[2,:] = ys
+        # heatmap!(p, xs, [y_min, y_max], zs; cmap=cgrad([:white, :red]), fillalpha=0.25, clim=(0, residual_limit))
+        # ylims!(p, y_min, y_max)
 
-            # heatmap!(p, xs, [y_min, y_max], zs; cmap=cgrad([:white, :red]), fillalpha=0.25, clim=(0, residual_limit))
-            # ylims!(p, y_min, y_max)
-
-            plot!(twinx(), xs, ys; fillrange=0 .* ys, ylims=(0, residual_limit), fillcolor=:red, fillalpha=0.25, label=nothing, lc=nothing, ylabel="residual", ytickfontcolor=:red, yforeground_color_axis=:red, yguidefontcolor=:red, yforeground_color_border=:red)
-        end
+        plot!(twinx(), xs, ys; fillrange=0 .* ys, ylims=(0, residual_limit), fillcolor=:red, fillalpha=0.25, label=nothing, lc=nothing, ylabel="residual", ytickfontcolor=:red, yforeground_color_axis=:red, yguidefontcolor=:red, yforeground_color_border=:red)
+    
         
         return p
     end
