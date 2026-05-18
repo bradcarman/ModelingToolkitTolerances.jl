@@ -37,7 +37,7 @@ resids = analysis(prob, Tsit5());
 @test maximum(resids[end].residuals[:,1]) < 1e-3
 
 
-p = plot(res)
+p = plot(res; yscale=:identity)
 @test p isa Plots.Plot
 p = plot(resids)
 @test p isa Plots.Plot
@@ -59,5 +59,8 @@ new_eq = ModelingToolkitTolerances.move_differentials_to_lhs(eq)
 
 
 # wall time checker
-@time sol, cpu_timing = solve(prob, true, Tsit5());
+@time sol, cpu_timing = solve_with_cpu_time(prob, Tsit5());
 @test cpu_timing isa ModelingToolkitTolerances.CPUTiming
+
+p = plot(cpu_timing)
+@test p isa Plots.Plot
