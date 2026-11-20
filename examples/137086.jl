@@ -69,7 +69,6 @@ end
 sys4  = mtkcompile(circuit4)
 prob4 = ODEProblem(sys4, [], (0.0, 0.1))
 sol4  = solve(prob4, Rodas5P(); abstol=1e-9, reltol=1e-12) #, dt = 1e-5, adaptive = false)
-
 plot(sol4; idxs=sys4.D3.p.i)
 
 

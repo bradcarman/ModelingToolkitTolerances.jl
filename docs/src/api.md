@@ -4,6 +4,7 @@
 
 ```@docs
 residual
+scaled_norm
 analysis
 work_precision
 work_precision!

@@ -8,7 +8,7 @@ using PrettyTables
 using DiffEqBase
 using DiffEqCallbacks
 
-export residual, analysis, work_precision, work_precision!, plot_with_residual, plot_with_residual!, solve_with_cpu_time
+export residual, scaled_norm, analysis, work_precision, work_precision!, plot_with_residual, plot_with_residual!, solve_with_cpu_time
 
 
 struct ResidualInfo
@@ -21,6 +21,9 @@ struct ResidualInfo
     abstol::Float64
     reltol::Float64
     timing::Float64
+    state_errors::Matrix{Float64}   # implied state error δu (units of each unknown), see `jacobian_state_errors`
+    states::Matrix{Float64}         # unknowns u at each time in `t`
+    state_error_dt::Float64         # time scale used for the differential rows of `M/dt - J`
 end
 
 struct ResidualSettings
@@ -42,6 +45,11 @@ function default_range(sol::ODESolution)
     return range(sol.t[1], sol.t[end], n)
 end
 
+function default_dt(sol::ODESolution, tms)
+    span = length(tms) > 1 ? last(tms) - first(tms) : sol.t[end] - sol.t[1]
+    return float(span / max(length(tms) - 1, 1))
+end
+
 
 """
     residual(sol::ODESolution, tms = default_range(sol); abstol=0.0, reltol=0.0, timing=0.0)
@@ -52,8 +60,9 @@ Keyword Arguments (used by `analysis() function`):
 - `abstol`: this simply records the `abstol` that was used to create `sol` object.  Since this information is not recorded in an `ODESolution` object it must be specified explicitly for reference.  Used by `analysis()` function.
 - `reltol`: same as above, but for `reltol`
 - `timing`: this records the corresponding solution time reference.  Used by `analysis()` function.
+- `state_error_dt`: time scale `dt` used to map residuals to state errors through `(M/dt - J) δu = r`.  Defaults to the spacing of `tms`.  See `scaled_norm()`.
 """
-function residual(sol::ODESolution, tms = default_range(sol); abstol=NaN, reltol=NaN, timing=NaN)
+function residual(sol::ODESolution, tms = default_range(sol); abstol=NaN, reltol=NaN, timing=NaN, state_error_dt = default_dt(sol, tms))
     prob = sol.prob
     f = prob.f
     sys = f.sys
@@ -103,8 +112,65 @@ function residual(sol::ODESolution, tms = default_range(sol); abstol=NaN, reltol
     lhss_data = fetch(task_lhs)
 
     residuals = rhss_data .- lhss_data
-    
-    return ResidualInfo(differential_vars, algebraic_vars, residuals, rhss_data, lhss_data, tms, abstol, reltol, timing)
+
+    errors, states = jacobian_state_errors(sol, tms, residuals; dt = state_error_dt)
+
+    return ResidualInfo(differential_vars, algebraic_vars, residuals, rhss_data, lhss_data, tms, abstol, reltol, timing, errors, states, state_error_dt)
+end
+
+"""
+    jacobian_state_errors(sol, tms, residuals; dt) -> (errors, states)
+
+Maps the equation residuals (each in its own physical units) back to state space, giving
+an implied state error `δu` with the same units as each unknown.
+
+The model is in mass-matrix form `M u' = f(u, p, t)` and the residual is `r = f(u) - M u'`.
+One Newton correction of the implicit step `M (u - uₚ)/dt = f(u)` gives
+
+    (M/dt - J) δu = r,      J = ∂f/∂u
+
+The units match: row `i` of `M/dt - J` has units `[rᵢ]/[uⱼ]`, so `δuⱼ` has the units of
+`uⱼ`. For algebraic rows (`Mᵢᵢ = 0`) this is the pure Jacobian mapping `δu = J⁻¹ r`.
+`M/dt` regularises the differential rows, so the system stays solvable when `J` is
+singular. That happens for plain integrators such as `D(x) ~ v` when nothing depends on `x`.
+As `dt → 0`, differential rows reduce to `δu ≈ r dt`.
+
+Returns `errors` and `states`, both `length(tms) × length(unknowns)` matrices.
+"""
+function jacobian_state_errors(sol::ODESolution, tms, residuals::AbstractMatrix; dt)
+    prob = sol.prob
+    f = prob.f
+    p = prob.p
+    n = length(prob.u0)
+    @assert size(residuals, 2) == n "Jacobian state error requires a square system: $(size(residuals, 2)) equations vs $n unknowns"
+
+    M = f.mass_matrix isa UniformScaling ? Matrix{Float64}(f.mass_matrix, n, n) : Matrix{Float64}(f.mass_matrix)
+    Mdt = M ./ dt
+
+    errors = zeros(length(tms), n)
+    states = zeros(length(tms), n)
+
+    Threads.@threads for i in eachindex(tms)
+        t = tms[i]
+        u = Vector{Float64}(sol(t))
+        J = if SciMLBase.isinplace(prob)
+            ForwardDiff.jacobian((du, x) -> f(du, x, p, t), similar(u), u)
+        else
+            ForwardDiff.jacobian(x -> f(x, p, t), u)
+        end
+        W = Mdt .- J
+        r = residuals[i, :]
+        δu = try
+            lu(W) \ r
+        catch err
+            err isa SingularException || rethrow()
+            pinv(W) * r
+        end
+        errors[i, :] = δu
+        states[i, :] = u
+    end
+
+    return errors, states
 end
 
 function LinearAlgebra.norm(info::ResidualInfo, vars = vcat(info.algebraic_vars, info.differential_vars))
@@ -115,6 +181,43 @@ function LinearAlgebra.norm(info::ResidualInfo, vars = vcat(info.algebraic_vars,
         push!(norms, x)
     end
 
+    return norms
+end
+
+"""
+    scaled_norm(info::ResidualInfo, vars = all unknowns; abstol = 1e-6, reltol = 1.0, p = 2) -> Vector{Float64}
+
+A dimensionless summary of the residual at each time in `info.t`.
+
+`LinearAlgebra.norm(info)` adds raw residuals together even when they have different
+physical units. `scaled_norm` avoids this. First it maps the residuals to an implied
+state error `δu` through the Jacobian (see `jacobian_state_errors`), so each component
+has the units of its unknown. Then it weights each component the way the ODE solvers do:
+
+    eᵢ = δuᵢ / (abstolᵢ + reltol * |uᵢ|)
+
+and returns the RMS (`p = 2`, like `DiffEqBase.ODE_DEFAULT_NORM`) or the max (`p = Inf`) over `vars`.
+
+With the defaults (`reltol = 1`, `abstol = 1e-6`), the result is roughly the relative
+error in the states that the residual implies. `abstol` may be a vector with one entry
+per unknown. Use this to give each variable its own nominal scale, like Modelica's
+`nominal` attribute. All weights must have the units of their unknown, so a scalar
+`abstol` is only an approximate floor near `uᵢ ≈ 0`.
+
+`vars` indexes the unknowns.  In a compiled system, equation `i` pairs with unknown `i`, so
+`info.differential_vars` and `info.algebraic_vars` can be passed directly.
+"""
+function scaled_norm(info::ResidualInfo, vars = 1:size(info.state_errors, 2); abstol = 1e-6, reltol = 1.0, p = 2)
+    n = size(info.state_errors, 2)
+    atol = abstol isa AbstractVector ? abstol : fill(float(abstol), n)
+    @assert length(atol) == n "abstol must be a scalar or have one entry per unknown ($n)"
+
+    norms = Float64[]
+    for i in 1:size(info.state_errors, 1)
+        e = [info.state_errors[i, j] / (atol[j] + reltol * abs(info.states[i, j])) for j in vars]
+        x = isempty(e) ? 0.0 : (p == 2 ? sqrt(sum(abs2, e) / length(e)) : norm(e, p))
+        push!(norms, x)
+    end
     return norms
 end
 
