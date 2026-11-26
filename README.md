@@ -44,15 +44,14 @@ plot(res; yscale=:identity)
 
 
 
-We can convert this to a single number by taking the `maximum` of the `norm`.
+We can convert this to a single number by taking the `maximum` of the `scaled_norm`.
 
 ```julia
-using LinearAlgebra
-r = maximum(norm(res))
+r = maximum(scaled_norm(res))
 ```
 
 ```
-0.4359462665530558
+0.7202878845463089
 ```
 
 
@@ -63,7 +62,7 @@ When using models in an algrithm, say in a loss function for example, it's a goo
 
 ```julia
 residual_limit = 0.1
-accept_result = (sol.retcode == ReturnCode.Success) && (maximum(norm(residual(sol))) < residual_limit)
+accept_result = (sol.retcode == ReturnCode.Success) && (maximum(scaled_norm(residual(sol))) < residual_limit)
 ```
 
 ```
@@ -79,7 +78,7 @@ If we decrease the step size we should get a better result.  Now we see an accep
 ```julia
 sol = solve(prob, Euler(); dt=0.1, adaptive=false)
 res = residual(sol)
-r = maximum(norm(res)) # 0.05
+r = maximum(scaled_norm(res)) # 0.046
 accept_result = (sol.retcode == ReturnCode.Success) & (r < residual_limit) # true
 plot_with_residual(sol; idxs=x)
 ```
@@ -166,12 +165,12 @@ resids = analysis(prob, Rodas5P())
 :: [83%] analysis step: abstol=1.0e-9, reltol=1.0e-6
 :: [92%] analysis step: abstol=1.0e-9, reltol=1.0e-9
 :: [100%] analysis step: abstol=1.0e-9, reltol=1.0e-12
-                             Summary of Max Residuals
+                         Summary of Max Scaled Residuals
 ┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
 │ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
 ├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
-│  0.001 │           26.6 │            1.05 │           0.395 │            0.364 │
-│ 1.0e-6 │           23.6 │           0.757 │         0.00229 │      * 3.21e-5 * │
+│  0.001 │          0.239 │         0.00535 │         0.00305 │          0.00314 │
+│ 1.0e-6 │          0.208 │         0.00623 │         2.31e-5 │      * 1.39e-7 * │
 │ 1.0e-9 │            N/A │             N/A │             N/A │              N/A │
 └────────┴────────────────┴─────────────────┴─────────────────┴──────────────────┘
 ```
@@ -229,83 +228,6 @@ plot(cpu_timing)
 
 
 
-## Advanced Use
-Note that we have used `@mtkbuild` which runs `structural_simplify()` on the model and reduces the 20 equation system down to 1 equation.  So what if we wanted to see the residual of each of those equations individually?  This might help us determine which equation is causing the model to struggle.  To do this we will use the function `no_simplify()`...
-
-```julia
-using ModelingToolkitTolerances: no_simplify
-
-@named sys = ValveVolume()
-sys = no_simplify(sys)
-
-st = unknowns(sys)
-u0 = st .=> sol(0.0; idxs=st) # <-- create initialization from previous solution
-prob = ODEProblem(sys, u0, (0, 1); build_initializeprob=false)
-sol = solve(prob, Rodas5P()) # <-- using default abstol & reltol
-plot_with_residual(sol; idxs=sys.vol₊port₊p, residual_limit=0.05)
-scatter!(sol.t, sol[sys.vol₊port₊p]; label="solution points")
-```
-
-![](figures/README_14_1.png)
-
-
-
-Here we get a very interesting solution, the adaptive time stepping is working more as expected with default tolerance.  Therefore this shows us that `structural_simplify()` is greatly influencing the solution.  
-
-The residual view has also been added to the plot (with the 2nd positional argument for resdiual scale, 0.05).  What we see here is the combined residual of all 20 equations.  As can be seen the result is much better now, with some increase in residual around the transitions.  If we want to look at the algebraic vs. differential equations, we can do the following...
-
-```julia
-using ModelingToolkitTolerances: ALGEBRAIC, DIFFERENTIAL
-resid = residual(sol)
-p1 = plot(resid, ALGEBRAIC; yscale=:identity)
-p2 = plot(resid, DIFFERENTIAL)
-plot(p1,p2)
-```
-
-![](figures/README_15_1.png)
-
-
-
-As can be seen, all but 1 of the equations are algebraic.  And we can see that roughly one equation contributes to the total error, which is equation 9.  We can plot specific equations with the following...
-
-```julia
-using ModelingToolkitTolerances: ResidualSettings
-
-plot(resid, ResidualSettings(9); yscale=:identity)
-```
-
-![](figures/README_16_1.png)
-
-
-
-We can take a look at the equation...
-
-```julia
-eqs = equations(sys)
-
-eqs[9]
-```
-
-```
-0 ~ -valve₊base₊port_a₊dm(t) + ifelse(valve₊base₊minimum_area < valve₊base₊
-area(t), valve₊base₊area(t), valve₊base₊minimum_area)*ifelse(abs((2valve₊ba
-se₊port_a₊ρ*(valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t))) / (0.01ifels
-e(0 < (valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t)), valve₊base₊Cd, val
-ve₊base₊Cd_reverse))) >= 1, 0.1(abs((2valve₊base₊port_a₊ρ*(valve₊base₊port_
-a₊p(t) - valve₊base₊port_b₊p(t))) / (0.01ifelse(0 < (valve₊base₊port_a₊p(t)
- - valve₊base₊port_b₊p(t)), valve₊base₊Cd, valve₊base₊Cd_reverse)))^0.5)*si
-gn((2valve₊base₊port_a₊ρ*(valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t)))
- / ifelse(0 < (valve₊base₊port_a₊p(t) - valve₊base₊port_b₊p(t)), valve₊base
-₊Cd, valve₊base₊Cd_reverse)), (0.2valve₊base₊port_a₊ρ*(valve₊base₊port_a₊p(
-t) - valve₊base₊port_b₊p(t))) / (0.01ifelse(0 < (valve₊base₊port_a₊p(t) - v
-alve₊base₊port_b₊p(t)), valve₊base₊Cd, valve₊base₊Cd_reverse)))
-```
-
-
-
-
-
-This is the valve equation, which is non-linear and makes sense that this is the biggest contributor to the error.  
 
 # How ModelingToolkitTolerances Works
 The concept of `ModelingToolkitTolerances` is quite simple.  From `ModelingToolkit`, we know the symbolic representation of the equations, therefore we know where the derivatives in the system are.  Using `ForwardDiff` and the `ODESolution` function, we can easily obtain  derivatives numerically.  Pair those 2 things together and it's easy to calculate the residual of all equations in a system.  
@@ -326,7 +248,7 @@ sol = solve(prob, Tsit5())
 plot(sol; idxs=T)
 ```
 
-![](figures/README_18_1.png)
+![](figures/README_14_1.png)
 
 
 
@@ -359,7 +281,7 @@ times = 0:1e-3:10
 plot(times, resf; label="manual")
 ```
 
-![](figures/README_21_1.png)
+![](figures/README_17_1.png)
 
 
 
@@ -370,11 +292,11 @@ res = residual(sol, times)
 plot!(res.t, res.residuals[:,1]; label="ModelingToolkitTolerances")
 ```
 
-![](figures/README_22_1.png)
+![](figures/README_18_1.png)
 
 
 
-Note: calling `plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY)` will plot the `norm` of all requested equations in `settings`.
+Note: calling `plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY)` will plot the `scaled_norm` of all requested equations in `settings`.
 
 Using the `analysis` function we can quickly find a better tolerance setting...
 
@@ -395,13 +317,13 @@ resids = analysis(prob, Tsit5())
 :: [83%] analysis step: abstol=1.0e-9, reltol=1.0e-6
 :: [92%] analysis step: abstol=1.0e-9, reltol=1.0e-9
 :: [100%] analysis step: abstol=1.0e-9, reltol=1.0e-12
-                             Summary of Max Residuals
+                         Summary of Max Scaled Residuals
 ┌────────┬────────────────┬─────────────────┬─────────────────┬──────────────────┐
 │ abstol │ reltol = 0.001 │ reltol = 1.0e-6 │ reltol = 1.0e-9 │ reltol = 1.0e-12 │
 ├────────┼────────────────┼─────────────────┼─────────────────┼──────────────────┤
-│  0.001 │            2.6 │          0.0104 │          0.0068 │          0.00678 │
-│ 1.0e-6 │           2.58 │         0.00224 │         9.14e-6 │          7.32e-6 │
-│ 1.0e-9 │           2.58 │         0.00227 │         2.17e-6 │      * 2.01e-8 * │
+│  0.001 │          0.551 │          0.0022 │         0.00144 │          0.00144 │
+│ 1.0e-6 │          0.547 │        0.000475 │         1.94e-6 │          1.55e-6 │
+│ 1.0e-9 │          0.547 │        0.000481 │         4.61e-7 │      * 4.26e-9 * │
 └────────┴────────────────┴─────────────────┴─────────────────┴──────────────────┘
 ```
 
@@ -411,7 +333,7 @@ resids = analysis(prob, Tsit5())
 plot(resids)
 ```
 
-![](figures/README_24_1.png)
+![](figures/README_20_1.png)
 
 
 
@@ -422,11 +344,54 @@ sol = solve(prob, Tsit5(); reltol=1e-6)
 plot(sol; idxs=T)
 ```
 
-![](figures/README_25_1.png)
+![](figures/README_21_1.png)
 
 
 
 As can be seen, we now have a stable solution, as expected.
+
+## Scaled Residual
+Every equation has its own residual, in its own physical units.  A pressure equation might have a residual in Pa/s, while a flow equation has one in m³/s.  Adding these together with `norm` doesn't make physical sense, and large-valued equations would hide small-valued ones.  Instead, `scaled_norm` turns the residuals into one dimensionless number at each time.  It does this in 3 steps.
+
+**1. Map the residual to a state error.**  The compiled model is in mass-matrix form $M u' = f(u, p, t)$, and the residual is $r = f(u) - M u'$.  To ask "how wrong are the states?", we take one Newton correction of an implicit step of size $dt$:
+
+```math
+\left( \frac{M}{dt} - J \right) \delta u = r, \qquad J = \frac{\partial f}{\partial u}
+```
+
+The Jacobian $J$ is computed with `ForwardDiff` at each time point.  The solved state error $\delta u_j$ has the same units as the unknown $u_j$.  For algebraic equations ($M_{ii} = 0$) this is simply $\delta u = J^{-1} r$.  For differential equations, the $M/dt$ term keeps the system solvable even when $J$ is singular, for example with a pure integrator like `D(x) ~ v`.  As $dt \to 0$, differential rows reduce to $\delta u \approx r \, dt$.
+
+The time scale $dt$ defaults to the spacing of the time points passed to `residual()` (stored in `res.state_error_dt`).  It can be set explicitly with the `state_error_dt` keyword.
+
+**2. Weight each state error the way the ODE solvers do.**
+
+```math
+e_i = \frac{\delta u_i}{\text{abstol}_i + \text{reltol} \, |u_i|}
+```
+
+The defaults are `abstol = 1e-6` and `reltol = 1e-3`, the same as the ODE solver defaults.  So a value of about 1 means the error the residual implies is about as large as the solver's default error tolerance.  Pass `reltol = 1` to get roughly the relative error in each state instead.  `abstol` can also be a vector with one entry per unknown.  This gives each variable its own nominal scale, like Modelica's `nominal` attribute.
+
+**3. Combine the weighted errors.**  The default `p = 2` gives the RMS over the selected unknowns, which matches `DiffEqBase.ODE_DEFAULT_NORM`.  `p = Inf` gives the maximum instead.
+
+For the convection model above there is 1 differential equation, so $M = 1$ and $J = -hA/(m c_p)$.  We can reproduce `scaled_norm` by hand from the `resf` function defined earlier...
+
+```julia
+res = residual(sol, times)  # residual of the current (reltol=1e-6) solution, matching `Tsol`
+dt = res.state_error_dt  # 1e-3, the spacing of `times`
+J = -(h * A) / (m * c_p)
+
+δT(t) = resf(t) / (1/dt - J)
+e(t) = abs(δT(t)) / (1e-6 + 1e-3 * abs(Tsol(t)))
+
+plot(times, e; label="manual", ylabel="scaled residual")
+plot!(res.t, scaled_norm(res); label="scaled_norm", linestyle=:dash)
+```
+
+![](figures/README_22_1.png)
+
+
+
+The scaled residual is what is shown by `plot(res)`, `plot(resids)`, `plot_with_residual()`, `work_precision()` and the `analysis()` summary table.
 
 ## Important Note
 Using `saveat` can affect the quality of the `ForwardDiff.derivative` computed from the `ODESolution`.  Avoid setting this keyword when using `residual()` or `analysis()`.  
@@ -444,6 +409,7 @@ Keyword Arguments (used by `analysis() function`):
   * `abstol`: this simply records the `abstol` that was used to create `sol` object.  Since this information is not recorded in an `ODESolution` object it must be specified explicitly for reference.  Used by `analysis()` function.
   * `reltol`: same as above, but for `reltol`
   * `timing`: this records the corresponding solution time reference.  Used by `analysis()` function.
+  * `state_error_dt`: time scale `dt` used to map residuals to state errors through `(M/dt - J) δu = r`.  Defaults to the spacing of `tms`.  See `scaled_norm()`.
 
 
 

@@ -185,7 +185,7 @@ function LinearAlgebra.norm(info::ResidualInfo, vars = vcat(info.algebraic_vars,
 end
 
 """
-    scaled_norm(info::ResidualInfo, vars = all unknowns; abstol = 1e-6, reltol = 1.0, p = 2) -> Vector{Float64}
+    scaled_norm(info::ResidualInfo, vars = all unknowns; abstol = 1e-6, reltol = 1e-3, p = 2) -> Vector{Float64}
 
 A dimensionless summary of the residual at each time in `info.t`.
 
@@ -198,8 +198,9 @@ has the units of its unknown. Then it weights each component the way the ODE sol
 
 and returns the RMS (`p = 2`, like `DiffEqBase.ODE_DEFAULT_NORM`) or the max (`p = Inf`) over `vars`.
 
-With the defaults (`reltol = 1`, `abstol = 1e-6`), the result is roughly the relative
-error in the states that the residual implies. `abstol` may be a vector with one entry
+The defaults (`abstol = 1e-6`, `reltol = 1e-3`) match the ODE solver defaults, so a value of
+about 1 means the error the residual implies is about as large as the solver's default
+error tolerance. Pass `reltol = 1` to get roughly the relative error in the states instead. `abstol` may be a vector with one entry
 per unknown. Use this to give each variable its own nominal scale, like Modelica's
 `nominal` attribute. All weights must have the units of their unknown, so a scalar
 `abstol` is only an approximate floor near `uᵢ ≈ 0`.
@@ -207,7 +208,7 @@ per unknown. Use this to give each variable its own nominal scale, like Modelica
 `vars` indexes the unknowns.  In a compiled system, equation `i` pairs with unknown `i`, so
 `info.differential_vars` and `info.algebraic_vars` can be passed directly.
 """
-function scaled_norm(info::ResidualInfo, vars = 1:size(info.state_errors, 2); abstol = 1e-6, reltol = 1.0, p = 2)
+function scaled_norm(info::ResidualInfo, vars = 1:size(info.state_errors, 2); abstol = 1e-6, reltol = 1e-3, p = 2)
     n = size(info.state_errors, 2)
     atol = abstol isa AbstractVector ? abstol : fill(float(abstol), n)
     @assert length(atol) == n "abstol must be a scalar or have one entry per unknown ($n)"
@@ -318,7 +319,7 @@ function show_summary(io, infos::Vector{ResidualInfo}; kwargs...)
         push!(column_labels, "reltol = $reltol")
     end
     
-    residuals = map(LinearAlgebra.norm, infos)
+    residuals = map(scaled_norm, infos)
     max_residuals = map(maximum, residuals)
     best = minimum(max_residuals)
 
@@ -332,7 +333,7 @@ function show_summary(io, infos::Vector{ResidualInfo}; kwargs...)
             info = filtersingle(x->(x.abstol == abstol) & (x.reltol == reltol), infos)
             if !isnothing(info)
                 
-                val = maximum(LinearAlgebra.norm(info))
+                val = maximum(scaled_norm(info))
 
                 timing = info.timing
 
@@ -358,7 +359,7 @@ function show_summary(io, infos::Vector{ResidualInfo}; kwargs...)
         push!(cols, col)
     end
 
-    pretty_table(io, hcat(abstols, cols...); column_labels, title="Summary of Max Residuals", fit_table_in_display_horizontally = false, fit_table_in_display_vertically = false, kwargs...)
+    pretty_table(io, hcat(abstols, cols...); column_labels, title="Summary of Max Scaled Residuals", fit_table_in_display_horizontally = false, fit_table_in_display_vertically = false, kwargs...)
 end
 
 

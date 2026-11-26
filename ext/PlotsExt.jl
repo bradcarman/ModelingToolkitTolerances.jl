@@ -7,7 +7,7 @@ module PlotsExt
     using SciMLBase
 
     function Plots.plot(info::ResidualInfo, settings::ResidualSettings = SUMMARY; yscale=:log10, kwargs...)
-        p = Plots.plot(;xlabel="time [s]", ylabel="residual", yscale, kwargs...)
+        p = Plots.plot(;xlabel="time [s]", ylabel="scaled residual", yscale, kwargs...)
 
         differential_vars = if settings.differential isa Bool
             if settings.differential
@@ -40,15 +40,15 @@ module PlotsExt
         end
 
         for i in differential_vars
-            Plots.plot!(p, info.t, LinearAlgebra.norm(info, [i]); linestyle=:dash, label="diff. $i")
+            Plots.plot!(p, info.t, ModelingToolkitTolerances.scaled_norm(info, [i]); linestyle=:dash, label="diff. $i")
         end
 
         for i in algebraic_vars
-            Plots.plot!(p, info.t, LinearAlgebra.norm(info, [i]); label="alg. $i")
+            Plots.plot!(p, info.t, ModelingToolkitTolerances.scaled_norm(info, [i]); label="alg. $i")
         end
         
         if !isempty(summary_vars)
-            Plots.plot!(p, info.t, LinearAlgebra.norm(info, summary_vars), width=2, color=:black, label=nothing)
+            Plots.plot!(p, info.t, ModelingToolkitTolerances.scaled_norm(info, summary_vars), width=2, color=:black, label=nothing)
         end
 
         return p
@@ -82,14 +82,14 @@ module PlotsExt
         reltols = map(x->x.reltol, infos) |> unique
 
         # xtick_labels = "10^" .* string.(round.(Int,log10.(reltols)))
-        p= Plots.plot(; ylabel="max residual", xlabel="reltol", xscale=:log10, yscale=:log10, leg, xticks=reltols, kwargs...)
+        p= Plots.plot(; ylabel="max scaled residual", xlabel="reltol", xscale=:log10, yscale=:log10, leg, xticks=reltols, kwargs...)
         for abstol in abstols
 
             resids = filter(x->x.abstol==abstol, infos)
 
 
             
-            residuals = map(x->summary(LinearAlgebra.norm(x)), resids)
+            residuals = map(x->summary(ModelingToolkitTolerances.scaled_norm(x)), resids)
             reltols = map(x->x.reltol, resids)
 
             exponent = -round(Int,log10(abstol))
@@ -100,7 +100,7 @@ module PlotsExt
 
         r = filtersingle(x->(x.abstol == 1e-6) & (x.reltol == 1e-3), infos)
         if !isnothing(r)
-            Plots.scatter!(p, [1e-3], [summary(LinearAlgebra.norm(r))]; label="default (abs,rel) = (10⁻⁶, 10⁻³)", marker=:star, markersize=10)
+            Plots.scatter!(p, [1e-3], [summary(ModelingToolkitTolerances.scaled_norm(r))]; label="default (abs,rel) = (10⁻⁶, 10⁻³)", marker=:star, markersize=10)
         end
 
         return p
@@ -142,8 +142,21 @@ module PlotsExt
     end
 
 
-    function ModelingToolkitTolerances.work_precision!(p::Plots.Plot, infos::Vector{ResidualInfo}; label=nothing, kwargs...)
-        residuals = map(x->maximum(x.residuals), infos)
+    # `metric` reduces a `ResidualInfo` to the scalar error plotted on the x-axis.
+    #   :scaled (default) -> maximum(scaled_norm(info)): dimensionless, Jacobian-mapped state error
+    #   :raw              -> maximum(info.residuals): raw residual (mixes physical units)
+    #   any function      -> metric(info)
+    function work_precision_metric(metric)
+        metric === :scaled && return (info -> maximum(ModelingToolkitTolerances.scaled_norm(info)), "max scaled error")
+        metric === :raw && return (info -> maximum(info.residuals), "max residual")
+        metric isa Function && return (metric, "error")
+        error("unknown metric $metric: use :scaled, :raw, or a function ResidualInfo -> Real")
+    end
+
+    function ModelingToolkitTolerances.work_precision!(p::Plots.Plot, infos::Vector{ResidualInfo}; label=nothing, metric=:scaled, xlabel=nothing, kwargs...)
+        f, default_xlabel = work_precision_metric(metric)
+        xlabel = something(xlabel, default_xlabel)
+        residuals = map(f, infos)
         timings = map(x->x.timing, infos)
 
         
@@ -155,7 +168,7 @@ module PlotsExt
         data = sort(data; by=first)
         data = hcat(data...)
 
-        Plots.plot!(p, data[1,:], data[2,:]; marker=:dot, xlabel="max residual", ylabel="time [s]", xscale=:log10, yscale=:log10, label, kwargs...)
+        Plots.plot!(p, data[1,:], data[2,:]; marker=:dot, xlabel, ylabel="time [s]", xscale=:log10, yscale=:log10, label, kwargs...)
         Plots.annotate!(p, data[1,:], data[2,:], data[3,:])
     end
 
@@ -180,7 +193,7 @@ module PlotsExt
         y_min, y_max = Plots.ylims(p)
 
         xs = res.t
-        ys = LinearAlgebra.norm(res)
+        ys = ModelingToolkitTolerances.scaled_norm(res)
 
         zs = zeros(2, length(xs))
         zs[1,:] = ys
@@ -189,7 +202,7 @@ module PlotsExt
         # heatmap!(p, xs, [y_min, y_max], zs; cmap=cgrad([:white, :red]), fillalpha=0.25, clim=(0, residual_limit))
         # ylims!(p, y_min, y_max)
 
-        plot!(twinx(), xs, ys; fillrange=0 .* ys, ylims=(0, residual_limit), fillcolor=:red, fillalpha=0.25, label=nothing, lc=nothing, ylabel="residual", ytickfontcolor=:red, yforeground_color_axis=:red, yguidefontcolor=:red, yforeground_color_border=:red)
+        plot!(twinx(), xs, ys; fillrange=0 .* ys, ylims=(0, residual_limit), fillcolor=:red, fillalpha=0.25, label=nothing, lc=nothing, ylabel="scaled residual", ytickfontcolor=:red, yforeground_color_axis=:red, yguidefontcolor=:red, yforeground_color_border=:red)
     
         
         return p
